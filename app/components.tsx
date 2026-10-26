@@ -5,6 +5,8 @@ import { DONATION_TOKENS, DONATION_WALLET, PRIZE_WALLET, SEASON_END, SPLIT } fro
 import {
   guildShares,
   rankFor,
+  type ClassedPlayer,
+  type ClassKey,
   type GuildInfo,
   type Player,
   type PlayerLevel,
@@ -208,58 +210,137 @@ const tdName = 'px-2 py-1.5'; // nome + linha extra: pode quebrar linha para cab
 const desk = 'hidden sm:table-cell'; // coluna só a partir de 640px
 const sub = 'text-xs font-normal text-muted sm:hidden'; // linha extra só no celular
 
-type SortKey = 'rank' | 'player' | 'guild' | 'gold' | 'share' | 'usdt';
-// [chave, título, alinhada à direita, só no computador]
-const COLS: [SortKey, string, boolean, boolean][] = [
-  ['rank', '#', false, false],
-  ['player', 'Jogador', false, false],
-  ['guild', 'Guilda', false, true],
-  ['gold', 'Gold', true, true],
-  ['share', '% do total', true, true],
-  ['usdt', 'Ganho (USDT)', true, false],
-];
+export const CLASS_INFO: Record<ClassKey, { label: string; icon: string; bar: string; border: string }> = {
+  knight: { label: 'Cavaleiro', icon: '🛡️', bar: 'bg-knight', border: 'border-knight' },
+  archer: { label: 'Arqueiro', icon: '🏹', bar: 'bg-archer', border: 'border-archer' },
+  mage: { label: 'Mago', icon: '🔮', bar: 'bg-mage', border: 'border-mage' },
+  unknown: { label: 'Desconhecida', icon: '❔', bar: 'bg-unknown', border: 'border-unknown' },
+};
 
+// Ícone com o nome da classe para leitores de tela e no hover: a cor nunca é a única pista.
+const ClassIcon = ({ cls }: { cls: ClassKey }) => (
+  <span role="img" aria-label={CLASS_INFO[cls].label} title={CLASS_INFO[cls].label}>
+    {CLASS_INFO[cls].icon}
+  </span>
+);
+
+type ColKey = 'rank' | 'levelRank' | 'player' | 'cls' | 'guild' | 'level' | 'gold' | 'share' | 'usdt';
+type Col = { key: ColKey; label: string; right?: boolean; desktopOnly?: boolean };
+const PLAYER_COLS: Col[] = [
+  { key: 'rank', label: '#' },
+  { key: 'player', label: 'Jogador' },
+  { key: 'guild', label: 'Guilda', desktopOnly: true },
+  { key: 'gold', label: 'Gold', right: true, desktopOnly: true },
+  { key: 'share', label: '% do total', right: true, desktopOnly: true },
+  { key: 'usdt', label: 'Ganho (USDT)', right: true },
+];
+const CLASS_COLS: Col[] = [
+  { key: 'rank', label: '# gold' },
+  { key: 'levelRank', label: '# nível', desktopOnly: true },
+  { key: 'player', label: 'Jogador' },
+  { key: 'cls', label: 'Classe', desktopOnly: true },
+  { key: 'guild', label: 'Guilda', desktopOnly: true },
+  { key: 'level', label: 'Nível', right: true, desktopOnly: true },
+  { key: 'gold', label: 'Gold', right: true, desktopOnly: true },
+  { key: 'usdt', label: 'Ganho (USDT)', right: true },
+];
+const ASC_FIRST: ColKey[] = ['rank', 'levelRank', 'player', 'cls', 'guild'];
+
+const sortValue = (r: ClassedPlayer, key: ColKey): number | string => {
+  if (key === 'cls') return CLASS_INFO[r.cls].label;
+  if (key === 'levelRank') return r.levelRank ?? Infinity; // fora do top de nível vai para o fim
+  if (key === 'level') return r.level ?? -Infinity;
+  return r[key] ?? '';
+};
+
+// Usada nas abas Jogadores (por guilda) e Classes (byClass: colunas e filtro de classe).
 export function RankingTable({
   rows,
   pool,
   selected,
   outside,
+  byClass = false,
 }: {
-  rows: RankedPlayer[];
+  rows: ClassedPlayer[];
   pool: PoolData;
   selected: string;
   outside: number;
+  byClass?: boolean;
 }) {
-  const [guild, setGuild] = useState('*'); // '*' = todas, '' = sem guilda
-  const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'rank', asc: true });
+  const cols = byClass ? CLASS_COLS : PLAYER_COLS;
+  const [filter, setFilter] = useState('*'); // '*' = todos; senão a guilda ('' = sem guilda) ou a classe
+  const [sort, setSort] = useState<{ key: ColKey; asc: boolean }>({ key: 'rank', asc: true });
   const guilds = [...new Set(rows.flatMap((r) => (r.guild ? [r.guild] : [])))].sort((a, b) => a.localeCompare(b));
-  const shown = rows
-    .filter((r) => guild === '*' || (guild === '' ? !r.guild : r.guild === guild))
-    .sort((a, b) => {
-      const x = a[sort.key] ?? '';
-      const y = b[sort.key] ?? '';
-      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
-      return sort.asc ? c : -c;
-    });
+  const options: [string, string][] = byClass
+    ? (['knight', 'archer', 'mage', 'unknown'] as const).map((c) => [c, `${CLASS_INFO[c].icon} ${CLASS_INFO[c].label}`])
+    : [['', 'Sem guilda'], ...guilds.map((g): [string, string] => [g, g])];
+  const keep = (r: ClassedPlayer) => {
+    if (filter === '*') return true;
+    if (byClass) return r.cls === filter;
+    return filter === '' ? !r.guild : r.guild === filter;
+  };
+  const shown = rows.filter(keep).sort((a, b) => {
+    const x = sortValue(a, sort.key);
+    const y = sortValue(b, sort.key);
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y || 0 : String(x).localeCompare(String(y));
+    return sort.asc ? c : -c;
+  });
   const sum = (k: 'gold' | 'share' | 'usdt') => shown.reduce((s, r) => s + r[k], 0);
-  const toggle = (key: SortKey) =>
-    setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: ['rank', 'player', 'guild'].includes(key) }));
+  const toggle = (key: ColKey) =>
+    setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: ASC_FIRST.includes(key) }));
   const sel = selected.trim().toLowerCase();
+  const usdtCell = (usdt: number) => (
+    <>
+      {fmtNum(usdt)}
+      <div className={sub}>{brl(usdt, pool)}</div>
+    </>
+  );
+  const cell = (key: ColKey, r: ClassedPlayer): [string, ReactNode] => {
+    switch (key) {
+      case 'rank':
+        return [r.rank <= 3 ? 'font-bold text-gold' : 'text-muted', r.rank];
+      case 'levelRank':
+        return ['text-muted', r.levelRank ?? '—'];
+      case 'cls':
+        return ['', `${CLASS_INFO[r.cls].icon} ${CLASS_INFO[r.cls].label}`];
+      case 'guild':
+        return ['text-muted', r.guild ?? '—'];
+      case 'level':
+        return ['text-muted', r.level ?? '—'];
+      case 'gold':
+        return ['', fmtInt(r.gold)];
+      case 'share':
+        return ['text-muted', fmtPct(r.share)];
+      case 'usdt':
+        return ['text-gold', usdtCell(r.usdt)];
+      default:
+        return ['', null];
+    }
+  };
+  const foot = (key: ColKey): ReactNode => {
+    if (key === 'player') return 'Total exibido';
+    if (key === 'gold') return fmtInt(sum('gold'));
+    if (key === 'share') return fmtPct(sum('share'));
+    if (key === 'usdt') return usdtCell(sum('usdt'));
+    return null;
+  };
+  const colClass = (c: Col) => `${c.desktopOnly ? desk : ''} ${c.right ? 'text-right' : ''}`;
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">
-          Guilda
+          {byClass ? 'Classe' : 'Guilda'}
           <select
-            value={guild}
-            onChange={(e) => setGuild(e.target.value)}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
             className="border-2 border-line bg-bg px-2 py-1 outline-none focus:border-gold"
           >
             <option value="*">Todas</option>
-            <option value="">Sem guilda</option>
-            {guilds.map((g) => (
-              <option key={g}>{g}</option>
+            {options.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </select>
         </label>
@@ -270,15 +351,15 @@ export function RankingTable({
         <table className="w-full text-sm tabular-nums">
           <thead>
             <tr>
-              {COLS.map(([key, label, right, desktopOnly]) => (
+              {cols.map((c) => (
                 <th
-                  key={key}
-                  className={`${th} ${right ? 'text-right' : 'text-left'} ${desktopOnly ? desk : ''}`}
-                  aria-sort={sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}
+                  key={c.key}
+                  className={`${th} ${c.right ? 'text-right' : 'text-left'} ${c.desktopOnly ? desk : ''}`}
+                  aria-sort={sort.key === c.key ? (sort.asc ? 'ascending' : 'descending') : undefined}
                 >
-                  <button onClick={() => toggle(key)} className="uppercase hover:text-gold">
-                    {label}
-                    {sort.key === key && (sort.asc ? ' ▲' : ' ▼')}
+                  <button onClick={() => toggle(c.key)} className="uppercase hover:text-gold">
+                    {c.label}
+                    {sort.key === c.key && (sort.asc ? ' ▲' : ' ▼')}
                   </button>
                 </th>
               ))}
@@ -288,37 +369,43 @@ export function RankingTable({
           <tbody>
             {shown.map((r) => (
               <tr key={r.player} className={r.player.toLowerCase() === sel ? 'bg-gold/15' : 'even:bg-white/[0.03]'}>
-                <td className={`${td} ${r.rank <= 3 ? 'font-bold text-gold' : 'text-muted'}`}>{r.rank}</td>
-                <td className={tdName}>
-                  <div className="font-medium">{r.player}</div>
-                  <div className={sub}>
-                    <span className="whitespace-nowrap">{r.guild ?? 'sem guilda'}</span> ·{' '}
-                    <span className="whitespace-nowrap">{fmtInt(r.gold)} gold</span>
-                  </div>
-                </td>
-                <td className={`${td} ${desk} text-muted`}>{r.guild ?? '—'}</td>
-                <td className={`${td} ${desk} text-right`}>{fmtInt(r.gold)}</td>
-                <td className={`${td} ${desk} text-right text-muted`}>{fmtPct(r.share)}</td>
-                <td className={`${td} text-right text-gold`}>
-                  {fmtNum(r.usdt)}
-                  <div className={sub}>{brl(r.usdt, pool)}</div>
-                </td>
+                {cols.map((c) => {
+                  if (c.key === 'player')
+                    return (
+                      <td key={c.key} className={tdName}>
+                        <div className="font-medium">
+                          {r.player} {r.cls !== 'unknown' && <ClassIcon cls={r.cls} />}
+                        </div>
+                        <div className={sub}>
+                          <span className="whitespace-nowrap">
+                            {byClass
+                              ? r.level === null
+                                ? 'fora do top de nível'
+                                : `nv. ${r.level}`
+                              : (r.guild ?? 'sem guilda')}
+                          </span>{' '}
+                          · <span className="whitespace-nowrap">{fmtInt(r.gold)} gold</span>
+                        </div>
+                      </td>
+                    );
+                  const [extra, content] = cell(c.key, r);
+                  return (
+                    <td key={c.key} className={`${td} ${colClass(c)} ${extra}`}>
+                      {content}
+                    </td>
+                  );
+                })}
                 <td className={`${td} ${desk} text-right`}>{brl(r.usdt, pool)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-line font-semibold">
-              <td className={td} colSpan={2}>
-                Total exibido
-              </td>
-              <td className={`${td} ${desk}`} />
-              <td className={`${td} ${desk} text-right`}>{fmtInt(sum('gold'))}</td>
-              <td className={`${td} ${desk} text-right`}>{fmtPct(sum('share'))}</td>
-              <td className={`${td} text-right text-gold`}>
-                {fmtNum(sum('usdt'))}
-                <div className={sub}>{brl(sum('usdt'), pool)}</div>
-              </td>
+              {cols.map((c) => (
+                <td key={c.key} className={`${td} ${colClass(c)} ${c.key === 'usdt' ? 'text-gold' : ''}`}>
+                  {foot(c.key)}
+                </td>
+              ))}
               <td className={`${td} ${desk} text-right`}>{brl(sum('usdt'), pool)}</td>
             </tr>
           </tfoot>
