@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  joinLevels,
   poolSlices,
   rankPlayers,
   totalGold,
@@ -67,6 +68,7 @@ export default function Home() {
   const goldTotal = top100 + outside;
   const perGold = slices ? valuePerGold(slices.individual, goldTotal) : 0;
   const rows = ranking && slices ? rankPlayers(ranking.players, slices.individual, goldTotal) : [];
+  const classed = ranking ? joinLevels(rows, ranking.levels) : []; // ranking de gold + classe/nível
 
   return (
     <>
@@ -110,7 +112,7 @@ export default function Home() {
                 ))}
               </div>
               {tab === 'players' ? (
-                <RankingTable rows={rows} pool={pool} selected={nick} outside={outside} />
+                <RankingTable rows={classed} pool={pool} selected={nick} outside={outside} />
               ) : (
                 <GuildTable players={ranking.players} guilds={ranking.guilds} guildPool={slices.guilds} pool={pool} />
               )}
