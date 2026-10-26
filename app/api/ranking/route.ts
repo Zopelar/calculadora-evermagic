@@ -1,0 +1,28 @@
+import { fetchGoldRanking, fetchGuildRanking, fetchLevelRanking } from '@/lib/evermagic';
+import { CACHE_HEADERS, cached } from '@/lib/http';
+import { connection } from 'next/server';
+
+export async function GET() {
+  await connection(); // nunca pré-renderizar no build: o cache é em memória (lib/http.ts)
+  try {
+    const [gold, guilds, levels] = await Promise.all([
+      cached('ranking/gold', fetchGoldRanking),
+      // guildas e nível são complementares: se falharem, o ranking de gold ainda sai
+      cached('ranking/guild', fetchGuildRanking).catch(() => null),
+      cached('ranking/level', fetchLevelRanking).catch(() => null),
+    ]);
+    return Response.json(
+      {
+        players: gold.data,
+        guilds: guilds?.data ?? [],
+        levels: levels?.data ?? [],
+        updatedAt: gold.at,
+        stale: gold.stale,
+      },
+      { headers: CACHE_HEADERS },
+    );
+  } catch (err) {
+    console.error(err);
+    return Response.json({ error: 'Ranking do Evermagic indisponível' }, { status: 502 });
+  }
+}

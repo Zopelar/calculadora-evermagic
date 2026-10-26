@@ -1,0 +1,37 @@
+// Tudo que pode mudar se as regras ou as fontes mudarem fica aqui.
+
+// Término oficial: 04/11/2026 · 15:00 UTC (12:00 de Brasília). Pode ser estendida.
+export const SEASON_END = '2026-11-04T15:00:00Z';
+
+// Divisão da prize pool (Alpha Wiki / anúncio oficial).
+export const SPLIT = {
+  team: 0.1,
+  individual: 0.75,
+  guilds: 0.06,
+  referral: 0.06,
+  bugs: 0.03,
+} as const;
+
+// Endpoints usados pelo próprio evermagic.io (não há API pública oficial).
+const BRIDGE = 'https://na-bridge.evermagic.io/bridge';
+export const RANKING_GOLD_URL = `${BRIDGE}/ranking/gold`;
+export const RANKING_GUILD_URL = `${BRIDGE}/ranking/guild`;
+export const RANKING_LEVEL_URL = `${BRIDGE}/ranking/level`;
+// Mesma fonte de preço da página evermagic.io/prizepool (preço de 1 EVA em USDT).
+export const EVA_PRICE_URL = `${BRIDGE}/eva/price?amount=1`;
+// Cotação de 1 USDT em R$ (Coinbase, sem chave). A AwesomeAPI responde HTTP 429 para os IPs
+// compartilhados da Vercel, por isso não é usada.
+export const USDT_BRL_URL = 'https://api.coinbase.com/v2/exchange-rates?currency=USDT';
+
+// Arbitrum One (chainId 42161).
+export const RPC_URL = process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+export const PRIZE_WALLET = '0x139061180aDea785DD8A1a32e4A2B1188d2621A1';
+export const EVA_TOKEN = '0x45d9831d8751b2325f3dbf48db748723726e1c8c';
+export const USDT_TOKEN = '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9';
+
+// Carteira para doações (aceita só pela Arbitrum One). Vazio = a seção de doação não aparece no site.
+export const DONATION_WALLET: string = '0xDD180205d742452aD9Cdfd0A312181C178B5b18A';
+export const DONATION_TOKENS = 'EVA, USDT ou ETH';
+
+export const CACHE_SECONDS = 300;
+export const USER_AGENT = 'evermagic-pool-calc/1.0 (calculadora nao oficial da prize pool)';
