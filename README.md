@@ -1,7 +1,7 @@
 # Evermagic Prize Pool · calculadora não oficial
 
 Mostra quanto cada jogador ganharia se a Season 0 Alpha do Evermagic acabasse agora:
-pool total (USDT / EVA / R$), ranking com ganho estimado, busca por nick, guildas, simulador.
+pool total (USDT / EVA / R$), ranking com ganho estimado, busca por nick, guildas, classes, simulador.
 
 Next.js (App Router) + TypeScript + Tailwind + viem. Sem banco de dados.
 
@@ -36,7 +36,7 @@ curl http://localhost:3000/api/ranking
 | --- | --- | --- |
 | Ranking de gold (top 100) | `GET na-bridge.evermagic.io/bridge/ranking/gold` | Mesmo endpoint da página oficial de leaderboard. Não exige `Origin`/`Referer`; tem rate limit (20 req/janela). |
 | Ranking de guildas | `GET na-bridge.evermagic.io/bridge/ranking/guild` | Traz nível, GP e total de membros de cada guilda. |
-| Ranking de nível | `GET na-bridge.evermagic.io/bridge/ranking/level` | Usado só para mostrar classe e nível na busca. |
+| Ranking de nível (top 100) | `GET na-bridge.evermagic.io/bridge/ranking/level` | Única fonte da classe (`knight`, `archer`, `mage`). Vem junto em `/api/ranking`, com o mesmo cache. Usado na aba Classes, no ícone de classe da aba Jogadores e na busca. |
 | Saldo da pool | Arbitrum One, `balanceOf` de EVA e USDT na carteira `0x139061180aDea785DD8A1a32e4A2B1188d2621A1` | Lido ao vivo via viem (multicall). |
 | Preço do EVA | `GET na-bridge.evermagic.io/bridge/eva/price?amount=1` | Mesma fonte da página evermagic.io/prizepool. |
 | USDT → BRL | `api.coinbase.com/v2/exchange-rates?currency=USDT` | Opcional: se falhar, os valores em R$ aparecem como "—". A AwesomeAPI não é usada porque responde HTTP 429 para os IPs da Vercel. |
@@ -63,6 +63,7 @@ ganhoJogador   = gold do jogador × valorPorGold
 
 - **Guildas (suposição)**: a regra oficial não diz como os 6% são divididos. O padrão é proporcional ao GP (pontos de guilda), que é o que ordena o ranking oficial de guildas; a aba Guildas também permite dividir pelo gold dos membros no top 100.
 - **Referral e bugs**: só o total de cada fatia (não há dados por jogador).
+- **Classes**: `joinLevels` cruza o ranking de gold com o de nível pelo nick (sem diferenciar maiúsculas, com trim). Quem está no top de gold e fora do top 100 de nível fica como "classe desconhecida". `classStats` soma o ganho dos jogadores de cada classe com o mesmo cálculo da aba Jogadores, então as 4 classes (com a desconhecida) fecham com o total do ranking individual. Nível médio e máximo usam todo o top 100 de nível. Os dados cobrem só o topo, não o servidor inteiro.
 - O código fica em `lib/calc.ts` (funções puras, testadas em `lib/calc.test.ts`).
 
 ## Estrutura
