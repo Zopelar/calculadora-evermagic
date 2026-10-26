@@ -13,6 +13,7 @@ import {
   type PoolData,
 } from '@/lib/calc';
 import {
+  ClassesTab,
   Disclaimers,
   GuildTable,
   PlayerSearch,
@@ -28,6 +29,13 @@ type PoolRes = Fetched & PoolData;
 
 const REFRESH_MS = 5 * 60_000; // mesmo intervalo do cache do servidor
 
+type Tab = 'players' | 'guilds' | 'classes';
+const TABS: [Tab, string][] = [
+  ['players', 'Jogadores'],
+  ['guilds', 'Guildas'],
+  ['classes', 'Classes'],
+];
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
@@ -40,7 +48,7 @@ export default function Home() {
   const [failed, setFailed] = useState(false);
   const [outside, setOutside] = useState(0);
   const [nick, setNick] = useState('');
-  const [tab, setTab] = useState<'players' | 'guilds'>('players');
+  const [tab, setTab] = useState<Tab>('players');
 
   useEffect(() => {
     // Só busca com a aba visível e no máximo a cada 5 min. Aba em segundo plano não gera
@@ -96,25 +104,27 @@ export default function Home() {
             />
             <PlayerSearch rows={rows} levels={ranking.levels} pool={pool} nick={nick} setNick={setNick} />
             <section className="panel p-4 sm:p-6">
-              <div role="tablist" className="mb-4 flex gap-2">
-                {(['players', 'guilds'] as const).map((t) => (
+              <div role="tablist" className="mb-4 flex flex-wrap gap-2">
+                {TABS.map(([t, label]) => (
                   <button
                     key={t}
                     role="tab"
                     aria-selected={tab === t}
                     onClick={() => setTab(t)}
-                    className={`border-2 px-3 py-2 font-pixel text-[10px] sm:text-xs ${
+                    className={`border-2 px-2 py-2 font-pixel text-[10px] max-[380px]:text-[9px] sm:px-3 sm:text-xs ${
                       tab === t ? 'border-gold bg-gold/10 text-gold' : 'border-line text-muted hover:text-ink'
                     }`}
                   >
-                    {t === 'players' ? 'Jogadores' : 'Guildas'}
+                    {label}
                   </button>
                 ))}
               </div>
-              {tab === 'players' ? (
-                <RankingTable rows={classed} pool={pool} selected={nick} outside={outside} />
-              ) : (
+              {tab === 'players' && <RankingTable rows={classed} pool={pool} selected={nick} outside={outside} />}
+              {tab === 'guilds' && (
                 <GuildTable players={ranking.players} guilds={ranking.guilds} guildPool={slices.guilds} pool={pool} />
+              )}
+              {tab === 'classes' && (
+                <ClassesTab players={classed} levels={ranking.levels} pool={pool} selected={nick} outside={outside} />
               )}
             </section>
             <Simulator
