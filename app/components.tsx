@@ -3,10 +3,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { DONATION_TOKENS, DONATION_WALLET, PRIZE_WALLET, SEASON_END, SPLIT } from '@/config';
 import {
+  classStats,
   guildShares,
   rankFor,
   type ClassedPlayer,
   type ClassKey,
+  type ClassStats,
   type GuildInfo,
   type Player,
   type PlayerLevel,
@@ -225,7 +227,7 @@ const ClassIcon = ({ cls }: { cls: ClassKey }) => (
 );
 
 type ColKey = 'rank' | 'levelRank' | 'player' | 'cls' | 'guild' | 'level' | 'gold' | 'share' | 'usdt';
-type Col = { key: ColKey; label: string; right?: boolean; desktopOnly?: boolean };
+type Col = { key: ColKey; label: ReactNode; right?: boolean; desktopOnly?: boolean };
 const PLAYER_COLS: Col[] = [
   { key: 'rank', label: '#' },
   { key: 'player', label: 'Jogador' },
@@ -235,7 +237,8 @@ const PLAYER_COLS: Col[] = [
   { key: 'usdt', label: 'Ganho (USDT)', right: true },
 ];
 const CLASS_COLS: Col[] = [
-  { key: 'rank', label: '# gold' },
+  // no celular só '#', para a tabela caber (a coluna '# nível' nem aparece lá)
+  { key: 'rank', label: <>#<span className="hidden sm:inline"> gold</span></> },
   { key: 'levelRank', label: '# nível', desktopOnly: true },
   { key: 'player', label: 'Jogador' },
   { key: 'cls', label: 'Classe', desktopOnly: true },
@@ -374,7 +377,13 @@ export function RankingTable({
                     return (
                       <td key={c.key} className={tdName}>
                         <div className="font-medium">
-                          {r.player} {r.cls !== 'unknown' && <ClassIcon cls={r.cls} />}
+                          {r.player}{' '}
+                          {r.cls !== 'unknown' && (
+                            // na aba Classes o computador já tem a coluna Classe; o ícone fica só no celular
+                            <span className={byClass ? 'sm:hidden' : ''}>
+                              <ClassIcon cls={r.cls} />
+                            </span>
+                          )}
                         </div>
                         <div className={sub}>
                           <span className="whitespace-nowrap">
@@ -487,6 +496,178 @@ export function GuildTable({
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// Barras horizontais em CSS, uma por classe. Nome, ícone e valor ficam sempre visíveis:
+// a cor identifica a classe, mas nunca é a única pista.
+function ClassBars({ title, items }: { title: string; items: { cls: ClassKey; value: number; label: string }[] }) {
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <figure>
+      <figcaption className="mb-3 text-sm text-muted">{title}</figcaption>
+      <div className="space-y-2">
+        {items.map((i) => (
+          <div
+            key={i.cls}
+            title={`${CLASS_INFO[i.cls].label}: ${i.label}`}
+            className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 text-sm"
+          >
+            <span className="whitespace-nowrap">
+              <span aria-hidden>{CLASS_INFO[i.cls].icon}</span> {CLASS_INFO[i.cls].label}
+            </span>
+            <div className="h-3 bg-white/[0.04]">
+              <div className={`h-3 rounded-r-[4px] ${CLASS_INFO[i.cls].bar}`} style={{ width: `${(i.value / max) * 100}%` }} />
+            </div>
+            <span className="text-right tabular-nums whitespace-nowrap">{i.label}</span>
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+const fmtLevel = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+
+function ClassCard({ s, place, pool }: { s: ClassStats; place: number; pool: PoolData }) {
+  const info = CLASS_INFO[s.cls];
+  const money = (usdt: number) => (
+    <>
+      {fmtNum(usdt)}
+      <div className="text-xs font-normal text-muted">{brl(usdt, pool)}</div>
+    </>
+  );
+  return (
+    <div className="panel space-y-3 p-4">
+      <div className={`-mx-4 -mt-4 h-1.5 ${info.bar}`} />
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-lg font-bold">
+          <span aria-hidden>{info.icon}</span> {info.label}
+        </h3>
+        <span className="font-pixel text-[10px] text-gold">{place}º</span>
+      </div>
+      <p className="text-xs text-muted">
+        {s.goldPlayers} no top 100 de gold · {s.levelPlayers} no top 100 de nível
+      </p>
+      <table className="w-full text-sm tabular-nums">
+        <thead>
+          <tr className="text-xs text-muted uppercase">
+            <th />
+            <th className="pb-1 text-right font-normal">Total</th>
+            <th className="pb-1 text-right font-normal text-gold">Por jogador</th>
+          </tr>
+        </thead>
+        <tbody className="align-top">
+          <tr>
+            <td className="py-1 text-muted">
+              Ganho
+              <div className="text-xs">USDT</div>
+            </td>
+            <td className="py-1 text-right font-semibold text-gold">{money(s.usdt)}</td>
+            <td className="bg-gold/5 py-1 pr-1 text-right font-semibold">{money(s.avgUsdt)}</td>
+          </tr>
+          <tr>
+            <td className="py-1 text-muted">Gold</td>
+            <td className="py-1 text-right">
+              {fmtInt(s.gold)}
+              <div className="text-xs text-muted">{fmtPct(s.goldShare)} do top 100</div>
+            </td>
+            <td className="bg-gold/5 py-1 pr-1 text-right">{fmtInt(s.avgGold)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-xs text-muted">
+        Nível médio <strong className="text-ink">{fmtLevel(s.avgLevel)}</strong> · máximo{' '}
+        <strong className="text-ink">{fmtLevel(s.maxLevel)}</strong>
+      </p>
+      <p className="text-xs text-muted">
+        Melhor jogador:{' '}
+        {s.best ? (
+          <>
+            <strong className="text-ink">{s.best.player}</strong> · nv. {fmtLevel(s.best.level)} · {fmtInt(s.best.gold)}{' '}
+            gold
+          </>
+        ) : (
+          '—'
+        )}
+      </p>
+    </div>
+  );
+}
+
+export function ClassesTab({
+  players,
+  levels,
+  pool,
+  selected,
+  outside,
+}: {
+  players: ClassedPlayer[];
+  levels: PlayerLevel[];
+  pool: PoolData;
+  selected: string;
+  outside: number;
+}) {
+  const stats = classStats(players, levels);
+  const known = stats.filter((s) => s.cls !== 'unknown');
+  const unknown = stats[stats.length - 1];
+  const total = stats.reduce((sum, s) => sum + s.usdt, 0);
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1 text-xs text-warn">
+        <p>
+          Os dados públicos cobrem só o top 100 de gold e o top 100 de nível: estas estatísticas representam os
+          jogadores do topo, não o servidor inteiro.
+        </p>
+        <p>“Classe desconhecida” = jogadores do top 100 de gold que estão fora do top 100 de nível.</p>
+        {levels.length === 0 && (
+          <p>⚠ Ranking de nível indisponível agora: todos aparecem como classe desconhecida.</p>
+        )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {known.map((s, i) => (
+          <ClassCard key={s.cls} s={s} place={i + 1} pool={pool} />
+        ))}
+      </div>
+
+      <div className="panel p-4 text-sm">
+        <div className={`-mx-4 -mt-4 mb-3 h-1 ${CLASS_INFO.unknown.bar}`} />
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="font-bold">
+            <span aria-hidden>{CLASS_INFO.unknown.icon}</span> Classe desconhecida
+          </span>
+          <span className="text-muted">{unknown.goldPlayers} jogadores do top de gold</span>
+          <span className="tabular-nums">
+            {fmtInt(unknown.gold)} gold ({fmtPct(unknown.goldShare)})
+          </span>
+          <span className="tabular-nums">
+            <span className="font-semibold text-gold">{fmtUsdt(unknown.usdt)}</span>{' '}
+            <span className="text-muted">{brl(unknown.usdt, pool)}</span>
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Soma das 4: <span className="text-ink">{fmtUsdt(total)}</span>, o mesmo total do ranking individual na aba
+          Jogadores.
+        </p>
+      </div>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <ClassBars
+          title="Jogadores por classe (top 100 de nível)"
+          items={known.map((s) => ({ cls: s.cls, value: s.levelPlayers, label: String(s.levelPlayers) }))}
+        />
+        <ClassBars
+          title="Gold médio por jogador (top 100 de gold)"
+          items={known.map((s) => ({ cls: s.cls, value: s.avgGold, label: fmtInt(s.avgGold) }))}
+        />
+      </div>
+
+      <div>
+        <h3 className="mb-3 font-pixel text-[10px] leading-relaxed text-gold sm:text-xs">Jogadores por classe</h3>
+        <RankingTable rows={players} pool={pool} selected={selected} outside={outside} byClass />
       </div>
     </div>
   );
