@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { guildShares, poolSlices, rankFor, rankPlayers, totalGold, valuePerGold, type GuildInfo, type Player } from './calc';
+import {
+  classStats,
+  guildShares,
+  joinLevels,
+  poolSlices,
+  rankFor,
+  rankPlayers,
+  totalGold,
+  valuePerGold,
+  type GuildInfo,
+  type Player,
+  type PlayerLevel,
+} from './calc';
 
 // Snapshot real de 24/10/2026 ~22h (na-bridge.evermagic.io).
 const OFFICIAL = { eva: 363.348, usdt: 0, evaPrice: 42.408399, usdBrl: 4.9652 };
@@ -147,5 +159,96 @@ describe('guildShares', () => {
     expect(rows).toEqual([]);
     const semGold = guildShares([], GUILDS, 60, 'gold');
     expect(semGold.every((r) => r.share === 0 && r.usdt === 0)).toBe(true);
+  });
+});
+
+describe('joinLevels (cruzamento gold × nível)', () => {
+  const gold: Player[] = [
+    { player: 'JosepRust', guild: 'MANA', gold: 300 },
+    { player: 'Ever', guild: 'MANA', gold: 200 },
+    { player: 'SoNoGold', guild: null, gold: 100 },
+  ];
+  const levels: PlayerLevel[] = [
+    { player: 'ever', class: 'archer', guild: 'MANA', level: 78 },
+    { player: ' JosepRust ', class: 'Knight', guild: 'MANA', level: 60 },
+    { player: 'SoNoNivel', class: 'mage', guild: null, level: 70 },
+  ];
+  const joined = joinLevels(rankPlayers(gold, 600, 600), levels);
+
+  it('junta pelo nick ignorando maiúsculas e espaços', () => {
+    expect(joined[0]).toMatchObject({ player: 'JosepRust', cls: 'knight', level: 60 });
+    expect(joined[1]).toMatchObject({ player: 'Ever', cls: 'archer', level: 78 });
+  });
+
+  it('quem está no top de gold mas fora do top de nível fica com classe desconhecida', () => {
+    expect(joined[2]).toMatchObject({ player: 'SoNoGold', cls: 'unknown', level: null, levelRank: null });
+  });
+
+  it('posição no nível segue a ordem por nível, mesmo que a API venha fora de ordem', () => {
+    expect(joined.map((p) => p.levelRank)).toEqual([3, 1, null]);
+  });
+
+  it('mantém o ranking de gold e o ganho calculados antes', () => {
+    expect(joined.map((p) => [p.rank, p.usdt])).toEqual([
+      [1, 300],
+      [2, 200],
+      [3, 100],
+    ]);
+  });
+
+  it('classe fora das três conhecidas vira desconhecida, mas o nível continua', () => {
+    const [p] = joinLevels(rankPlayers([gold[0]], 1, 1), [{ ...levels[1], class: 'priest' }]);
+    expect(p).toMatchObject({ cls: 'unknown', level: 60 });
+  });
+});
+
+describe('classStats', () => {
+  const gold: Player[] = [
+    { player: 'a1', guild: null, gold: 400 },
+    { player: 'm1', guild: null, gold: 300 },
+    { player: 'a2', guild: null, gold: 200 },
+    { player: 'k1', guild: null, gold: 60 },
+    { player: 'x1', guild: null, gold: 40 },
+  ];
+  const levels: PlayerLevel[] = [
+    { player: 'a1', class: 'archer', guild: null, level: 70 },
+    { player: 'm1', class: 'mage', guild: null, level: 66 },
+    { player: 'a2', class: 'archer', guild: null, level: 60 },
+    { player: 'k1', class: 'knight', guild: null, level: 55 },
+    { player: 'soNivel', class: 'archer', guild: null, level: 80 },
+  ];
+  const players = joinLevels(rankPlayers(gold, 1000, totalGold(gold)), levels);
+  const stats = classStats(players, levels);
+  const by = (cls: string) => stats.find((s) => s.cls === cls)!;
+
+  it('ordena as classes pelo ganho total e deixa a desconhecida por último', () => {
+    expect(stats.map((s) => s.cls)).toEqual(['archer', 'mage', 'knight', 'unknown']);
+  });
+
+  it('soma das classes (com a desconhecida) fecha com o total do ranking individual', () => {
+    expect(stats.reduce((s, c) => s + c.usdt, 0)).toBeCloseTo(1000, 9);
+    expect(stats.reduce((s, c) => s + c.gold, 0)).toBe(1000);
+    expect(stats.reduce((s, c) => s + c.goldShare, 0)).toBeCloseTo(1, 12);
+  });
+
+  it('separa total e média por jogador', () => {
+    expect(by('archer')).toMatchObject({ goldPlayers: 2, gold: 600, avgGold: 300, usdt: 600, avgUsdt: 300, goldShare: 0.6 });
+    expect(by('mage')).toMatchObject({ goldPlayers: 1, gold: 300, avgGold: 300, usdt: 300, avgUsdt: 300 });
+  });
+
+  it('nível conta quem está só no top de nível; gold conta só quem está no top de gold', () => {
+    expect(by('archer')).toMatchObject({ levelPlayers: 3, maxLevel: 80, avgLevel: 70 });
+    expect(by('archer').goldPlayers).toBe(2);
+  });
+
+  it('melhor jogador da classe é o de maior gold', () => {
+    expect(by('archer').best).toMatchObject({ player: 'a1', level: 70, gold: 400 });
+    expect(by('unknown')).toMatchObject({ goldPlayers: 1, gold: 40, levelPlayers: 0, avgLevel: null, maxLevel: null });
+  });
+
+  it('sem ranking de nível: todos ficam desconhecidos, sem NaN', () => {
+    const s = classStats(joinLevels(rankPlayers(gold, 1000, 1000), []), []);
+    expect(s.find((c) => c.cls === 'unknown')).toMatchObject({ goldPlayers: 5, usdt: 1000 });
+    expect(s.find((c) => c.cls === 'archer')).toMatchObject({ goldPlayers: 0, avgGold: 0, avgUsdt: 0, avgLevel: null, best: null });
   });
 });
