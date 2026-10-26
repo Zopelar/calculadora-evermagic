@@ -212,17 +212,18 @@ const tdName = 'px-2 py-1.5'; // nome + linha extra: pode quebrar linha para cab
 const desk = 'hidden sm:table-cell'; // coluna só a partir de 640px
 const sub = 'text-xs font-normal text-muted sm:hidden'; // linha extra só no celular
 
-export const CLASS_INFO: Record<ClassKey, { label: string; icon: string; bar: string; border: string }> = {
-  knight: { label: 'Cavaleiro', icon: '🛡️', bar: 'bg-knight', border: 'border-knight' },
-  archer: { label: 'Arqueiro', icon: '🏹', bar: 'bg-archer', border: 'border-archer' },
-  mage: { label: 'Mago', icon: '🔮', bar: 'bg-mage', border: 'border-mage' },
-  unknown: { label: 'Desconhecida', icon: '❔', bar: 'bg-unknown', border: 'border-unknown' },
+export const CLASS_INFO: Record<ClassKey, { label: string; bar: string }> = {
+  knight: { label: 'Cavaleiro', bar: 'bg-knight' },
+  archer: { label: 'Arqueiro', bar: 'bg-archer' },
+  mage: { label: 'Mago', bar: 'bg-mage' },
+  unknown: { label: 'Desconhecida', bar: 'bg-unknown' },
 };
 
-// Ícone com o nome da classe para leitores de tela e no hover: a cor nunca é a única pista.
-const ClassIcon = ({ cls }: { cls: ClassKey }) => (
-  <span role="img" aria-label={CLASS_INFO[cls].label} title={CLASS_INFO[cls].label}>
-    {CLASS_INFO[cls].icon}
+// Quadradinho na cor da classe + o nome: a cor nunca aparece sozinha.
+const ClassLabel = ({ cls }: { cls: ClassKey }) => (
+  <span className="whitespace-nowrap">
+    <span aria-hidden className={`mr-1.5 inline-block size-2.5 ${CLASS_INFO[cls].bar}`} />
+    {CLASS_INFO[cls].label}
   </span>
 );
 
@@ -231,6 +232,7 @@ type Col = { key: ColKey; label: ReactNode; right?: boolean; desktopOnly?: boole
 const PLAYER_COLS: Col[] = [
   { key: 'rank', label: '#' },
   { key: 'player', label: 'Jogador' },
+  { key: 'cls', label: 'Classe', desktopOnly: true },
   { key: 'guild', label: 'Guilda', desktopOnly: true },
   { key: 'gold', label: 'Gold', right: true, desktopOnly: true },
   { key: 'share', label: '% do total', right: true, desktopOnly: true },
@@ -275,7 +277,7 @@ export function RankingTable({
   const [sort, setSort] = useState<{ key: ColKey; asc: boolean }>({ key: 'rank', asc: true });
   const guilds = [...new Set(rows.flatMap((r) => (r.guild ? [r.guild] : [])))].sort((a, b) => a.localeCompare(b));
   const options: [string, string][] = byClass
-    ? (['knight', 'archer', 'mage', 'unknown'] as const).map((c) => [c, `${CLASS_INFO[c].icon} ${CLASS_INFO[c].label}`])
+    ? (['knight', 'archer', 'mage', 'unknown'] as const).map((c) => [c, CLASS_INFO[c].label])
     : [['', 'Sem guilda'], ...guilds.map((g): [string, string] => [g, g])];
   const keep = (r: ClassedPlayer) => {
     if (filter === '*') return true;
@@ -305,7 +307,7 @@ export function RankingTable({
       case 'levelRank':
         return ['text-muted', r.levelRank ?? '—'];
       case 'cls':
-        return ['', `${CLASS_INFO[r.cls].icon} ${CLASS_INFO[r.cls].label}`];
+        return ['', <ClassLabel cls={r.cls} />];
       case 'guild':
         return ['text-muted', r.guild ?? '—'];
       case 'level':
@@ -376,16 +378,14 @@ export function RankingTable({
                   if (c.key === 'player')
                     return (
                       <td key={c.key} className={tdName}>
-                        <div className="font-medium">
-                          {r.player}{' '}
-                          {r.cls !== 'unknown' && (
-                            // na aba Classes o computador já tem a coluna Classe; o ícone fica só no celular
-                            <span className={byClass ? 'sm:hidden' : ''}>
-                              <ClassIcon cls={r.cls} />
-                            </span>
-                          )}
-                        </div>
+                        <div className="font-medium">{r.player}</div>
+                        {/* no celular a coluna Classe some: a classe vai para a linha de baixo */}
                         <div className={sub}>
+                          {r.cls !== 'unknown' && (
+                            <>
+                              <ClassLabel cls={r.cls} /> ·{' '}
+                            </>
+                          )}
                           <span className="whitespace-nowrap">
                             {byClass
                               ? r.level === null
@@ -515,9 +515,7 @@ function ClassBars({ title, items }: { title: string; items: { cls: ClassKey; va
             title={`${CLASS_INFO[i.cls].label}: ${i.label}`}
             className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 text-sm"
           >
-            <span className="whitespace-nowrap">
-              <span aria-hidden>{CLASS_INFO[i.cls].icon}</span> {CLASS_INFO[i.cls].label}
-            </span>
+            <span className="whitespace-nowrap">{CLASS_INFO[i.cls].label}</span>
             <div className="h-3 bg-white/[0.04]">
               <div className={`h-3 rounded-r-[4px] ${CLASS_INFO[i.cls].bar}`} style={{ width: `${(i.value / max) * 100}%` }} />
             </div>
@@ -543,9 +541,7 @@ function ClassCard({ s, place, pool }: { s: ClassStats; place: number; pool: Poo
     <div className="panel space-y-3 p-4">
       <div className={`-mx-4 -mt-4 h-1.5 ${info.bar}`} />
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-lg font-bold">
-          <span aria-hidden>{info.icon}</span> {info.label}
-        </h3>
+        <h3 className="text-lg font-bold">{info.label}</h3>
         <span className="font-pixel text-[10px] text-gold">{place}º</span>
       </div>
       <p className="text-xs text-muted">
@@ -636,9 +632,7 @@ export function ClassesTab({
       <div className="panel p-4 text-sm">
         <div className={`-mx-4 -mt-4 mb-3 h-1 ${CLASS_INFO.unknown.bar}`} />
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <span className="font-bold">
-            <span aria-hidden>{CLASS_INFO.unknown.icon}</span> Classe desconhecida
-          </span>
+          <span className="font-bold">Classe desconhecida</span>
           <span className="text-muted">{unknown.goldPlayers} jogadores do top de gold</span>
           <span className="tabular-nums">
             {fmtInt(unknown.gold)} gold ({fmtPct(unknown.goldShare)})
