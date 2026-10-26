@@ -9,6 +9,12 @@
   --color-ink: #ece7f6;
   --color-muted: #9a92ad;
   --color-warn: #ff9f43;
+  /* Classes: validadas no fundo dos painéis (dataviz validate_palette, --pairs all). Vermelho×verde
+     fica em ΔE 6,1 para daltonismo: por isso a cor sempre vem com o nome da classe. */
+  --color-knight: #ec5b53;
+  --color-mage: #a371f7;
+  --color-archer: #147040;
+  --color-unknown: #6e6781;
 }
 
 @theme inline {

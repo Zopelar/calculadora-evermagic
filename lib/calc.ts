@@ -88,3 +88,71 @@ export function guildShares(
   }
   return [...rows.values()].sort((a, b) => b.share - a.share || b.topGold - a.topGold);
 }
+
+export type PlayerClass = 'knight' | 'archer' | 'mage';
+export type ClassKey = PlayerClass | 'unknown';
+export const PLAYER_CLASSES: PlayerClass[] = ['knight', 'archer', 'mage'];
+
+// Jogador do top de gold com classe e nível vindos do ranking de nível ('unknown' se estiver fora dele).
+export type ClassedPlayer = RankedPlayer & { cls: ClassKey; level: number | null; levelRank: number | null };
+
+export type ClassStats = {
+  cls: ClassKey;
+  goldPlayers: number; // jogadores no top 100 de gold
+  levelPlayers: number; // jogadores no top 100 de nível
+  gold: number;
+  avgGold: number; // por jogador do top de gold
+  goldShare: number; // fração do gold do top 100
+  usdt: number; // soma do ganho estimado dos jogadores (mesmo cálculo da aba Jogadores)
+  avgUsdt: number;
+  avgLevel: number | null; // do top 100 de nível
+  maxLevel: number | null;
+  best: ClassedPlayer | null; // maior gold da classe
+};
+
+const nickKey = (nick: string) => nick.trim().toLowerCase();
+const classOf = (raw: string): ClassKey => {
+  const c = raw.trim().toLowerCase();
+  return (PLAYER_CLASSES as string[]).includes(c) ? (c as PlayerClass) : 'unknown';
+};
+
+export function joinLevels(rows: RankedPlayer[], levels: PlayerLevel[]): ClassedPlayer[] {
+  const byNick = new Map<string, PlayerLevel & { levelRank: number }>();
+  [...levels]
+    .sort((a, b) => b.level - a.level)
+    .forEach((l, i) => {
+      const key = nickKey(l.player);
+      if (!byNick.has(key)) byNick.set(key, { ...l, levelRank: i + 1 });
+    });
+  return rows.map((r) => {
+    const l = byNick.get(nickKey(r.player));
+    return { ...r, cls: l ? classOf(l.class) : 'unknown', level: l?.level ?? null, levelRank: l?.levelRank ?? null };
+  });
+}
+
+// As 3 classes ordenadas pelo ganho total, e a 'unknown' por último (para os totais fecharem com a pool).
+export function classStats(players: ClassedPlayer[], levels: PlayerLevel[]): ClassStats[] {
+  const top100 = totalGold(players);
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const stats = (cls: ClassKey): ClassStats => {
+    const mine = players.filter((p) => p.cls === cls);
+    const lv = levels.filter((l) => classOf(l.class) === cls && cls !== 'unknown').map((l) => l.level);
+    const gold = sum(mine.map((p) => p.gold));
+    const usdt = sum(mine.map((p) => p.usdt));
+    const n = mine.length;
+    return {
+      cls,
+      goldPlayers: n,
+      levelPlayers: lv.length,
+      gold,
+      avgGold: n ? gold / n : 0,
+      goldShare: top100 > 0 ? gold / top100 : 0,
+      usdt,
+      avgUsdt: n ? usdt / n : 0,
+      avgLevel: lv.length ? sum(lv) / lv.length : null,
+      maxLevel: lv.length ? Math.max(...lv) : null,
+      best: mine.reduce<ClassedPlayer | null>((b, p) => (!b || p.gold > b.gold ? p : b), null),
+    };
+  };
+  return [...PLAYER_CLASSES.map(stats).sort((a, b) => b.usdt - a.usdt), stats('unknown')];
+}

@@ -3,8 +3,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { DONATION_TOKENS, DONATION_WALLET, PRIZE_WALLET, SEASON_END, SPLIT } from '@/config';
 import {
+  classStats,
   guildShares,
   rankFor,
+  type ClassedPlayer,
+  type ClassKey,
+  type ClassStats,
   type GuildInfo,
   type Player,
   type PlayerLevel,
@@ -208,58 +212,140 @@ const tdName = 'px-2 py-1.5'; // nome + linha extra: pode quebrar linha para cab
 const desk = 'hidden sm:table-cell'; // coluna só a partir de 640px
 const sub = 'text-xs font-normal text-muted sm:hidden'; // linha extra só no celular
 
-type SortKey = 'rank' | 'player' | 'guild' | 'gold' | 'share' | 'usdt';
-// [chave, título, alinhada à direita, só no computador]
-const COLS: [SortKey, string, boolean, boolean][] = [
-  ['rank', '#', false, false],
-  ['player', 'Jogador', false, false],
-  ['guild', 'Guilda', false, true],
-  ['gold', 'Gold', true, true],
-  ['share', '% do total', true, true],
-  ['usdt', 'Ganho (USDT)', true, false],
-];
+export const CLASS_INFO: Record<ClassKey, { label: string; bar: string }> = {
+  knight: { label: 'Cavaleiro', bar: 'bg-knight' },
+  archer: { label: 'Arqueiro', bar: 'bg-archer' },
+  mage: { label: 'Mago', bar: 'bg-mage' },
+  unknown: { label: 'Desconhecida', bar: 'bg-unknown' },
+};
 
+// Quadradinho na cor da classe + o nome: a cor nunca aparece sozinha.
+const ClassLabel = ({ cls }: { cls: ClassKey }) => (
+  <span className="whitespace-nowrap">
+    <span aria-hidden className={`mr-1.5 inline-block size-2.5 ${CLASS_INFO[cls].bar}`} />
+    {CLASS_INFO[cls].label}
+  </span>
+);
+
+type ColKey = 'rank' | 'levelRank' | 'player' | 'cls' | 'guild' | 'level' | 'gold' | 'share' | 'usdt';
+type Col = { key: ColKey; label: ReactNode; right?: boolean; desktopOnly?: boolean };
+const PLAYER_COLS: Col[] = [
+  { key: 'rank', label: '#' },
+  { key: 'player', label: 'Jogador' },
+  { key: 'cls', label: 'Classe', desktopOnly: true },
+  { key: 'guild', label: 'Guilda', desktopOnly: true },
+  { key: 'gold', label: 'Gold', right: true, desktopOnly: true },
+  { key: 'share', label: '% do total', right: true, desktopOnly: true },
+  { key: 'usdt', label: 'Ganho (USDT)', right: true },
+];
+const CLASS_COLS: Col[] = [
+  // no celular só '#', para a tabela caber (a coluna '# nível' nem aparece lá)
+  { key: 'rank', label: <>#<span className="hidden sm:inline"> gold</span></> },
+  { key: 'levelRank', label: '# nível', desktopOnly: true },
+  { key: 'player', label: 'Jogador' },
+  { key: 'cls', label: 'Classe', desktopOnly: true },
+  { key: 'guild', label: 'Guilda', desktopOnly: true },
+  { key: 'level', label: 'Nível', right: true, desktopOnly: true },
+  { key: 'gold', label: 'Gold', right: true, desktopOnly: true },
+  { key: 'usdt', label: 'Ganho (USDT)', right: true },
+];
+const ASC_FIRST: ColKey[] = ['rank', 'levelRank', 'player', 'cls', 'guild'];
+
+const sortValue = (r: ClassedPlayer, key: ColKey): number | string => {
+  if (key === 'cls') return CLASS_INFO[r.cls].label;
+  if (key === 'levelRank') return r.levelRank ?? Infinity; // fora do top de nível vai para o fim
+  if (key === 'level') return r.level ?? -Infinity;
+  return r[key] ?? '';
+};
+
+// Usada nas abas Jogadores (por guilda) e Classes (byClass: colunas e filtro de classe).
 export function RankingTable({
   rows,
   pool,
   selected,
   outside,
+  byClass = false,
 }: {
-  rows: RankedPlayer[];
+  rows: ClassedPlayer[];
   pool: PoolData;
   selected: string;
   outside: number;
+  byClass?: boolean;
 }) {
-  const [guild, setGuild] = useState('*'); // '*' = todas, '' = sem guilda
-  const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: 'rank', asc: true });
+  const cols = byClass ? CLASS_COLS : PLAYER_COLS;
+  const [filter, setFilter] = useState('*'); // '*' = todos; senão a guilda ('' = sem guilda) ou a classe
+  const [sort, setSort] = useState<{ key: ColKey; asc: boolean }>({ key: 'rank', asc: true });
   const guilds = [...new Set(rows.flatMap((r) => (r.guild ? [r.guild] : [])))].sort((a, b) => a.localeCompare(b));
-  const shown = rows
-    .filter((r) => guild === '*' || (guild === '' ? !r.guild : r.guild === guild))
-    .sort((a, b) => {
-      const x = a[sort.key] ?? '';
-      const y = b[sort.key] ?? '';
-      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
-      return sort.asc ? c : -c;
-    });
+  const options: [string, string][] = byClass
+    ? (['knight', 'archer', 'mage', 'unknown'] as const).map((c) => [c, CLASS_INFO[c].label])
+    : [['', 'Sem guilda'], ...guilds.map((g): [string, string] => [g, g])];
+  const keep = (r: ClassedPlayer) => {
+    if (filter === '*') return true;
+    if (byClass) return r.cls === filter;
+    return filter === '' ? !r.guild : r.guild === filter;
+  };
+  const shown = rows.filter(keep).sort((a, b) => {
+    const x = sortValue(a, sort.key);
+    const y = sortValue(b, sort.key);
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y || 0 : String(x).localeCompare(String(y));
+    return sort.asc ? c : -c;
+  });
   const sum = (k: 'gold' | 'share' | 'usdt') => shown.reduce((s, r) => s + r[k], 0);
-  const toggle = (key: SortKey) =>
-    setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: ['rank', 'player', 'guild'].includes(key) }));
+  const toggle = (key: ColKey) =>
+    setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: ASC_FIRST.includes(key) }));
   const sel = selected.trim().toLowerCase();
+  const usdtCell = (usdt: number) => (
+    <>
+      {fmtNum(usdt)}
+      <div className={sub}>{brl(usdt, pool)}</div>
+    </>
+  );
+  const cell = (key: ColKey, r: ClassedPlayer): [string, ReactNode] => {
+    switch (key) {
+      case 'rank':
+        return [r.rank <= 3 ? 'font-bold text-gold' : 'text-muted', r.rank];
+      case 'levelRank':
+        return ['text-muted', r.levelRank ?? '—'];
+      case 'cls':
+        return ['', <ClassLabel cls={r.cls} />];
+      case 'guild':
+        return ['text-muted', r.guild ?? '—'];
+      case 'level':
+        return ['text-muted', r.level ?? '—'];
+      case 'gold':
+        return ['', fmtInt(r.gold)];
+      case 'share':
+        return ['text-muted', fmtPct(r.share)];
+      case 'usdt':
+        return ['text-gold', usdtCell(r.usdt)];
+      default:
+        return ['', null];
+    }
+  };
+  const foot = (key: ColKey): ReactNode => {
+    if (key === 'player') return 'Total exibido';
+    if (key === 'gold') return fmtInt(sum('gold'));
+    if (key === 'share') return fmtPct(sum('share'));
+    if (key === 'usdt') return usdtCell(sum('usdt'));
+    return null;
+  };
+  const colClass = (c: Col) => `${c.desktopOnly ? desk : ''} ${c.right ? 'text-right' : ''}`;
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">
-          Guilda
+          {byClass ? 'Classe' : 'Guilda'}
           <select
-            value={guild}
-            onChange={(e) => setGuild(e.target.value)}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
             className="border-2 border-line bg-bg px-2 py-1 outline-none focus:border-gold"
           >
             <option value="*">Todas</option>
-            <option value="">Sem guilda</option>
-            {guilds.map((g) => (
-              <option key={g}>{g}</option>
+            {options.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </select>
         </label>
@@ -270,15 +356,15 @@ export function RankingTable({
         <table className="w-full text-sm tabular-nums">
           <thead>
             <tr>
-              {COLS.map(([key, label, right, desktopOnly]) => (
+              {cols.map((c) => (
                 <th
-                  key={key}
-                  className={`${th} ${right ? 'text-right' : 'text-left'} ${desktopOnly ? desk : ''}`}
-                  aria-sort={sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}
+                  key={c.key}
+                  className={`${th} ${c.right ? 'text-right' : 'text-left'} ${c.desktopOnly ? desk : ''}`}
+                  aria-sort={sort.key === c.key ? (sort.asc ? 'ascending' : 'descending') : undefined}
                 >
-                  <button onClick={() => toggle(key)} className="uppercase hover:text-gold">
-                    {label}
-                    {sort.key === key && (sort.asc ? ' ▲' : ' ▼')}
+                  <button onClick={() => toggle(c.key)} className="uppercase hover:text-gold">
+                    {c.label}
+                    {sort.key === c.key && (sort.asc ? ' ▲' : ' ▼')}
                   </button>
                 </th>
               ))}
@@ -288,37 +374,47 @@ export function RankingTable({
           <tbody>
             {shown.map((r) => (
               <tr key={r.player} className={r.player.toLowerCase() === sel ? 'bg-gold/15' : 'even:bg-white/[0.03]'}>
-                <td className={`${td} ${r.rank <= 3 ? 'font-bold text-gold' : 'text-muted'}`}>{r.rank}</td>
-                <td className={tdName}>
-                  <div className="font-medium">{r.player}</div>
-                  <div className={sub}>
-                    <span className="whitespace-nowrap">{r.guild ?? 'sem guilda'}</span> ·{' '}
-                    <span className="whitespace-nowrap">{fmtInt(r.gold)} gold</span>
-                  </div>
-                </td>
-                <td className={`${td} ${desk} text-muted`}>{r.guild ?? '—'}</td>
-                <td className={`${td} ${desk} text-right`}>{fmtInt(r.gold)}</td>
-                <td className={`${td} ${desk} text-right text-muted`}>{fmtPct(r.share)}</td>
-                <td className={`${td} text-right text-gold`}>
-                  {fmtNum(r.usdt)}
-                  <div className={sub}>{brl(r.usdt, pool)}</div>
-                </td>
+                {cols.map((c) => {
+                  if (c.key === 'player')
+                    return (
+                      <td key={c.key} className={tdName}>
+                        <div className="font-medium">{r.player}</div>
+                        {/* no celular a coluna Classe some: a classe vai para a linha de baixo */}
+                        <div className={sub}>
+                          {r.cls !== 'unknown' && (
+                            <>
+                              <ClassLabel cls={r.cls} /> ·{' '}
+                            </>
+                          )}
+                          <span className="whitespace-nowrap">
+                            {byClass
+                              ? r.level === null
+                                ? 'fora do top de nível'
+                                : `nv. ${r.level}`
+                              : (r.guild ?? 'sem guilda')}
+                          </span>{' '}
+                          · <span className="whitespace-nowrap">{fmtInt(r.gold)} gold</span>
+                        </div>
+                      </td>
+                    );
+                  const [extra, content] = cell(c.key, r);
+                  return (
+                    <td key={c.key} className={`${td} ${colClass(c)} ${extra}`}>
+                      {content}
+                    </td>
+                  );
+                })}
                 <td className={`${td} ${desk} text-right`}>{brl(r.usdt, pool)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-line font-semibold">
-              <td className={td} colSpan={2}>
-                Total exibido
-              </td>
-              <td className={`${td} ${desk}`} />
-              <td className={`${td} ${desk} text-right`}>{fmtInt(sum('gold'))}</td>
-              <td className={`${td} ${desk} text-right`}>{fmtPct(sum('share'))}</td>
-              <td className={`${td} text-right text-gold`}>
-                {fmtNum(sum('usdt'))}
-                <div className={sub}>{brl(sum('usdt'), pool)}</div>
-              </td>
+              {cols.map((c) => (
+                <td key={c.key} className={`${td} ${colClass(c)} ${c.key === 'usdt' ? 'text-gold' : ''}`}>
+                  {foot(c.key)}
+                </td>
+              ))}
               <td className={`${td} ${desk} text-right`}>{brl(sum('usdt'), pool)}</td>
             </tr>
           </tfoot>
@@ -400,6 +496,172 @@ export function GuildTable({
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// Barras horizontais em CSS, uma por classe. Nome, ícone e valor ficam sempre visíveis:
+// a cor identifica a classe, mas nunca é a única pista.
+function ClassBars({ title, items }: { title: string; items: { cls: ClassKey; value: number; label: string }[] }) {
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <figure>
+      <figcaption className="mb-3 text-sm text-muted">{title}</figcaption>
+      <div className="space-y-2">
+        {items.map((i) => (
+          <div
+            key={i.cls}
+            title={`${CLASS_INFO[i.cls].label}: ${i.label}`}
+            className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 text-sm"
+          >
+            <span className="whitespace-nowrap">{CLASS_INFO[i.cls].label}</span>
+            <div className="h-3 bg-white/[0.04]">
+              <div className={`h-3 rounded-r-[4px] ${CLASS_INFO[i.cls].bar}`} style={{ width: `${(i.value / max) * 100}%` }} />
+            </div>
+            <span className="text-right tabular-nums whitespace-nowrap">{i.label}</span>
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+const fmtLevel = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+
+function ClassCard({ s, place, pool }: { s: ClassStats; place: number; pool: PoolData }) {
+  const info = CLASS_INFO[s.cls];
+  const money = (usdt: number) => (
+    <>
+      {fmtNum(usdt)}
+      <div className="text-xs font-normal text-muted">{brl(usdt, pool)}</div>
+    </>
+  );
+  return (
+    <div className="panel space-y-3 p-4">
+      <div className={`-mx-4 -mt-4 h-1.5 ${info.bar}`} />
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-lg font-bold">{info.label}</h3>
+        <span className="font-pixel text-[10px] text-gold">{place}º</span>
+      </div>
+      <p className="text-xs text-muted">
+        {s.goldPlayers} no top 100 de gold · {s.levelPlayers} no top 100 de nível
+      </p>
+      <table className="w-full text-sm tabular-nums">
+        <thead>
+          <tr className="text-xs text-muted uppercase">
+            <th />
+            <th className="pb-1 text-right font-normal">Total</th>
+            <th className="pb-1 text-right font-normal text-gold">Por jogador</th>
+          </tr>
+        </thead>
+        <tbody className="align-top">
+          <tr>
+            <td className="py-1 text-muted">
+              Ganho
+              <div className="text-xs">USDT</div>
+            </td>
+            <td className="py-1 text-right font-semibold text-gold">{money(s.usdt)}</td>
+            <td className="bg-gold/5 py-1 pr-1 text-right font-semibold">{money(s.avgUsdt)}</td>
+          </tr>
+          <tr>
+            <td className="py-1 text-muted">Gold</td>
+            <td className="py-1 text-right">
+              {fmtInt(s.gold)}
+              <div className="text-xs text-muted">{fmtPct(s.goldShare)} do top 100</div>
+            </td>
+            <td className="bg-gold/5 py-1 pr-1 text-right">{fmtInt(s.avgGold)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-xs text-muted">
+        Nível médio <strong className="text-ink">{fmtLevel(s.avgLevel)}</strong> · máximo{' '}
+        <strong className="text-ink">{fmtLevel(s.maxLevel)}</strong>
+      </p>
+      <p className="text-xs text-muted">
+        Melhor jogador:{' '}
+        {s.best ? (
+          <>
+            <strong className="text-ink">{s.best.player}</strong> · nv. {fmtLevel(s.best.level)} · {fmtInt(s.best.gold)}{' '}
+            gold
+          </>
+        ) : (
+          '—'
+        )}
+      </p>
+    </div>
+  );
+}
+
+export function ClassesTab({
+  players,
+  levels,
+  pool,
+  selected,
+  outside,
+}: {
+  players: ClassedPlayer[];
+  levels: PlayerLevel[];
+  pool: PoolData;
+  selected: string;
+  outside: number;
+}) {
+  const stats = classStats(players, levels);
+  const known = stats.filter((s) => s.cls !== 'unknown');
+  const unknown = stats[stats.length - 1];
+  const total = stats.reduce((sum, s) => sum + s.usdt, 0);
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1 text-xs text-warn">
+        <p>
+          Os dados públicos cobrem só o top 100 de gold e o top 100 de nível: estas estatísticas representam os
+          jogadores do topo, não o servidor inteiro.
+        </p>
+        <p>“Classe desconhecida” = jogadores do top 100 de gold que estão fora do top 100 de nível.</p>
+        {levels.length === 0 && (
+          <p>⚠ Ranking de nível indisponível agora: todos aparecem como classe desconhecida.</p>
+        )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {known.map((s, i) => (
+          <ClassCard key={s.cls} s={s} place={i + 1} pool={pool} />
+        ))}
+      </div>
+
+      <div className="panel p-4 text-sm">
+        <div className={`-mx-4 -mt-4 mb-3 h-1 ${CLASS_INFO.unknown.bar}`} />
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="font-bold">Classe desconhecida</span>
+          <span className="text-muted">{unknown.goldPlayers} jogadores do top de gold</span>
+          <span className="tabular-nums">
+            {fmtInt(unknown.gold)} gold ({fmtPct(unknown.goldShare)})
+          </span>
+          <span className="tabular-nums">
+            <span className="font-semibold text-gold">{fmtUsdt(unknown.usdt)}</span>{' '}
+            <span className="text-muted">{brl(unknown.usdt, pool)}</span>
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Soma das 4: <span className="text-ink">{fmtUsdt(total)}</span>, o mesmo total do ranking individual na aba
+          Jogadores.
+        </p>
+      </div>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <ClassBars
+          title="Jogadores por classe (top 100 de nível)"
+          items={known.map((s) => ({ cls: s.cls, value: s.levelPlayers, label: String(s.levelPlayers) }))}
+        />
+        <ClassBars
+          title="Gold médio por jogador (top 100 de gold)"
+          items={known.map((s) => ({ cls: s.cls, value: s.avgGold, label: fmtInt(s.avgGold) }))}
+        />
+      </div>
+
+      <div>
+        <h3 className="mb-3 font-pixel text-[10px] leading-relaxed text-gold sm:text-xs">Jogadores por classe</h3>
+        <RankingTable rows={players} pool={pool} selected={selected} outside={outside} byClass />
       </div>
     </div>
   );
