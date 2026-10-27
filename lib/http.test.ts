@@ -76,6 +76,18 @@ describe('cached', () => {
     expect(await cached('recupera', async () => 'voltou')).toMatchObject({ data: 'voltou', stale: false });
   });
 
+  it('aceita validade própria (composição on-chain: 10 min)', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-27T04:00:00Z') });
+    const load = vi.fn(async () => Date.now());
+    await cached('ttl-10min', load, 600);
+    vi.setSystemTime(new Date('2026-10-27T04:09:59Z'));
+    await cached('ttl-10min', load, 600);
+    expect(load).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date('2026-10-27T04:10:01Z'));
+    await cached('ttl-10min', load, 600);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it('sem nenhum dado anterior, propaga o erro', async () => {
     await expect(
       cached('vazio', async () => {

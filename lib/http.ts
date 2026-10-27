@@ -1,9 +1,10 @@
 import { CACHE_SECONDS, USER_AGENT } from '../config';
 
-export const CACHE_HEADERS = {
-  // A CDN da Vercel segura a resposta por 5 min: as fontes não são chamadas a cada visita.
-  'Cache-Control': `public, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=60`,
-};
+// A CDN da Vercel segura a resposta (5 min por padrão): as fontes não são chamadas a cada visita.
+export const cacheHeaders = (seconds = CACHE_SECONDS) => ({
+  'Cache-Control': `public, s-maxage=${seconds}, stale-while-revalidate=60`,
+});
+export const CACHE_HEADERS = cacheHeaders();
 
 export async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, {
@@ -21,9 +22,9 @@ const RETRY_MS = 60_000; // depois de uma falha, só tenta a fonte de novo após
 
 // ponytail: cache em memória por instância, sem dedupe de chamadas simultâneas.
 // Se precisar compartilhar entre instâncias ou guardar histórico: Vercel KV / Upstash.
-export async function cached<T>(key: string, load: () => Promise<T>) {
+export async function cached<T>(key: string, load: () => Promise<T>, ttlSeconds = CACHE_SECONDS) {
   const hit = store.get(key) as { at: number; data: T } | undefined;
-  if (hit && Date.now() - hit.at < CACHE_SECONDS * 1000) return { ...hit, stale: false };
+  if (hit && Date.now() - hit.at < ttlSeconds * 1000) return { ...hit, stale: false };
   // Freio: fonte que acabou de falhar (ex.: 429) não é chamada a cada visita.
   if (Date.now() - (failedAt.get(key) ?? 0) < RETRY_MS) {
     if (hit) return { ...hit, stale: true };
