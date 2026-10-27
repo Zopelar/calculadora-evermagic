@@ -1,7 +1,16 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { DONATION_TOKENS, DONATION_WALLET, PRIZE_WALLET, SEASON_END, SPLIT } from '@/config';
+import {
+  DONATION_TOKENS,
+  DONATION_WALLET,
+  GAME_PASS_EVA,
+  OUTSIDE_LIKELY_FACTOR,
+  POTION_EVA,
+  PRIZE_WALLET,
+  SEASON_END,
+  SPLIT,
+} from '@/config';
 import {
   classStats,
   guildShares,
@@ -9,17 +18,31 @@ import {
   type ClassedPlayer,
   type ClassKey,
   type ClassStats,
+  type Estimate,
   type GuildInfo,
   type Player,
   type PlayerLevel,
   type PoolData,
   type RankedPlayer,
+  type Scenario,
   type Slices,
 } from '@/lib/calc';
+import type { Composition, DailyIn } from '@/lib/composition';
 import { fmtBrl, fmtEva, fmtInt, fmtNum, fmtPct, fmtPrice, fmtTime, fmtUsdt } from '@/lib/format';
 
 // Valor em R$, ou '—' se a cotação estiver indisponível.
 const brl = (usdt: number, pool: PoolData) => (pool.usdBrl === null ? '—' : fmtBrl(usdt * pool.usdBrl));
+
+// Faixa de ganho estimada pelos passes on-chain: valor por gold em cada cenário. null = sem faixa
+// (composição on-chain indisponível ou ninguém pagante fora do top 100).
+export type Band = Record<Scenario, number> | null;
+type Range = [number, number] | null; // [pior caso, otimista] em USDT
+const rangeOf = (gold: number, band: Band): Range => (band ? [gold * band.worst, gold * band.optimistic] : null);
+const brlRange = ([lo, hi]: [number, number], pool: PoolData, sep = ' a ') =>
+  pool.usdBrl === null ? '—' : `${fmtBrl(lo * pool.usdBrl)}${sep}${fmtBrl(hi * pool.usdBrl)}`;
+const rangeCls = 'text-[11px] font-normal text-muted'; // linha da faixa nas tabelas
+
+export type CompositionRes = Composition & { updatedAt: number; stale: boolean };
 
 const H2 = ({ children }: { children: ReactNode }) => (
   <h2 className="mb-4 font-pixel text-xs leading-relaxed text-gold sm:text-sm">{children}</h2>
@@ -34,7 +57,17 @@ function Stat({ label, children, className = '' }: { label: string; children: Re
   );
 }
 
-export function Money({ usdt, pool, big = false }: { usdt: number; pool: PoolData; big?: boolean }) {
+export function Money({
+  usdt,
+  pool,
+  big = false,
+  range = null,
+}: {
+  usdt: number;
+  pool: PoolData;
+  big?: boolean;
+  range?: Range;
+}) {
   return (
     <div className="tabular-nums">
       <div className={big ? 'text-2xl font-bold text-gold sm:text-3xl' : 'text-lg font-semibold text-gold'}>
@@ -43,6 +76,11 @@ export function Money({ usdt, pool, big = false }: { usdt: number; pool: PoolDat
       <div className="text-xs text-muted">
         ≈ {fmtEva(usdt / pool.evaPrice)} · {brl(usdt, pool)}
       </div>
+      {range && (
+        <div className="text-xs text-muted">
+          entre {fmtNum(range[0])} e {fmtUsdt(range[1])} · {brlRange(range, pool)}
+        </div>
+      )}
     </div>
   );
 }
@@ -131,16 +169,290 @@ export function PoolHeader({
   );
 }
 
+const ddmm = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+const fmtAxis = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+// Topo do eixo arredondado para 1, 2 ou 5 × 10^n.
+const niceCeil = (x: number) => {
+  const p = 10 ** Math.floor(Math.log10(x));
+  return [1, 2, 5, 10].map((m) => m * p).find((v) => v >= x) ?? 10 * p;
+};
+
+// Colunas empilhadas em CSS (passes na base, poções em cima). Passar o mouse, focar ou tocar numa
+// coluna mostra os números do dia na linha de cima; a tabela fica logo abaixo.
+function DailyChart({ daily }: { daily: DailyIn[] }) {
+  const [sel, setSel] = useState<number | null>(null);
+  if (!daily.length) return null;
+  const top = niceCeil(Math.max(...daily.map((d) => d.passesEva + d.potionsEva), 0.01));
+  const d = daily[sel ?? daily.length - 1];
+  const describe = (x: DailyIn) =>
+    `${ddmm(x.day)}: ${fmtInt(x.passes)} passes (${fmtEva(x.passesEva)}) · ${fmtInt(x.potions)} poções (${fmtEva(x.potionsEva)})`;
+  const swatch = (cls: string, label: string) => (
+    <span className="whitespace-nowrap">
+      <span aria-hidden className={`mr-1.5 inline-block size-2.5 ${cls}`} />
+      {label}
+    </span>
+  );
+  return (
+    <figure>
+      <figcaption className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+        <span className="text-muted">Entradas por dia (EVA, horário de Brasília)</span>
+        <span className="flex gap-3 text-xs text-muted">
+          {swatch('bg-pass', 'Passes')}
+          {swatch('bg-potion', 'Poções')}
+        </span>
+      </figcaption>
+      <p className="mb-3 min-h-8 text-xs text-ink tabular-nums" aria-live="polite">
+        {describe(d)}
+      </p>
+      <div className="flex gap-2">
+        <div className="relative w-8 shrink-0 text-right text-[10px] text-muted tabular-nums">
+          <span className="absolute right-0 -translate-y-1/2">{fmtAxis(top)}</span>
+          <span className="absolute top-1/2 right-0 -translate-y-1/2">{fmtAxis(top / 2)}</span>
+          <span className="absolute right-0 bottom-0 translate-y-1/2">0</span>
+        </div>
+        <div className="relative h-32 flex-1 border-b border-line">
+          <div className="absolute inset-x-0 top-0 border-t border-line" />
+          <div className="absolute inset-x-0 top-1/2 border-t border-line" />
+          <div className="absolute inset-0 flex items-end gap-0.5" onMouseLeave={() => setSel(null)}>
+            {daily.map((x, i) => {
+              const total = x.passesEva + x.potionsEva;
+              const parts = (
+                [
+                  ['bg-potion', x.potionsEva],
+                  ['bg-pass', x.passesEva],
+                ] as const
+              ).filter(([, v]) => v > 0);
+              return (
+                <button
+                  key={x.day}
+                  aria-label={describe(x)}
+                  onMouseEnter={() => setSel(i)}
+                  onFocus={() => setSel(i)}
+                  onClick={() => setSel(i)}
+                  className={`flex h-full min-w-0 flex-1 items-end justify-center outline-none focus-visible:bg-white/10 ${
+                    sel === i ? 'bg-white/5' : ''
+                  }`}
+                >
+                  {total > 0 && (
+                    <span
+                      className="flex w-full max-w-6 flex-col gap-0.5"
+                      style={{ height: `max(${parts.length * 2}px, ${(total / top) * 100}%)` }}
+                    >
+                      {parts.map(([cls, v], j) => (
+                        <span key={cls} className={`${cls} ${j === 0 ? 'rounded-t-sm' : ''}`} style={{ flex: `${v} 1 0` }} />
+                      ))}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="mt-1 ml-10 flex justify-between text-[10px] text-muted">
+        <span>{ddmm(daily[0].day)}</span>
+        {daily.length > 2 && <span>{ddmm(daily[Math.floor((daily.length - 1) / 2)].day)}</span>}
+        <span>{ddmm(daily[daily.length - 1].day)}</span>
+      </div>
+      <details className="mt-3 text-xs">
+        <summary className="cursor-pointer text-muted hover:text-gold">Ver tabela por dia</summary>
+        <div className="mt-2 max-h-64 overflow-auto">
+          <table className="w-full tabular-nums">
+            <thead>
+              <tr>
+                <th className={`${th} text-left`}>Dia</th>
+                <th className={`${th} text-right`}>Passes</th>
+                <th className={`${th} text-right`}>Poções</th>
+                <th className={`${th} text-right`}>EVA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...daily].reverse().map((x) => (
+                <tr key={x.day} className="even:bg-white/3">
+                  <td className="px-2 py-1">{ddmm(x.day)}</td>
+                  <td className="px-2 py-1 text-right">{fmtInt(x.passes)}</td>
+                  <td className="px-2 py-1 text-right">{fmtInt(x.potions)}</td>
+                  <td className="px-2 py-1 text-right">{fmtNum(x.passesEva + x.potionsEva)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </figure>
+  );
+}
+
+const SCENARIOS: [Scenario, string, string][] = [
+  ['optimistic', 'Otimista', 'só o gold do top 100'],
+  ['likely', 'Provável', `cada pagante de fora com ${OUTSIDE_LIKELY_FACTOR * 100}% do gold do 100º`],
+  ['worst', 'Pior caso', 'cada pagante de fora com o gold do 100º'],
+];
+
+export function PoolComposition({
+  comp,
+  failed,
+  estimate,
+  pool,
+  auto,
+}: {
+  comp: CompositionRes | null;
+  failed: boolean;
+  estimate: Estimate | null;
+  pool: PoolData;
+  auto: boolean;
+}) {
+  if (!comp)
+    return (
+      <p className="panel p-4 text-sm text-muted sm:p-6">
+        {failed
+          ? 'Composição on-chain da pool indisponível agora: os ganhos aparecem sem a faixa estimada.'
+          : 'Lendo as transferências da carteira da pool na Arbitrum…'}
+      </p>
+    );
+  const net = comp.seed.eva + comp.passes.eva + comp.potions.eva + comp.unknown.eva - comp.outgoing.eva;
+  const netLabel = `Aporte + passes + poções${comp.unknown.count ? ' + não identificadas' : ''}${
+    comp.outgoing.count ? ' − saídas' : ''
+  }`;
+  const eva = (price: string) => price.replace('.', ',');
+  const box = (label: string, value: string, note: string) => (
+    <div className="border-2 border-line p-3">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="text-lg font-semibold tabular-nums">{value}</div>
+      <div className="text-xs text-muted tabular-nums">{note}</div>
+    </div>
+  );
+  const per100k = (s: Scenario) => 100_000 * (estimate?.perGold[s] ?? 0);
+  return (
+    // Fechado por padrão; o resumo e os alertas ficam visíveis no cabeçalho.
+    <details className="group panel p-4 open:space-y-5 sm:p-6">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 [&::-webkit-details-marker]:hidden">
+        <h2 className="font-pixel text-xs leading-relaxed text-gold sm:text-sm">Composição da pool</h2>
+        <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted tabular-nums group-hover:text-ink">
+          {fmtInt(comp.passes.count)} passes · {fmtInt(comp.potions.count)} poções
+          {estimate && ` · ${fmtInt(estimate.payingOutside)} fora do top 100`}
+          {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
+            <span className="text-warn">⚠ ver alertas</span>
+          )}
+          <span aria-hidden className="text-sm text-gold transition-transform group-open:rotate-180">
+            ▾
+          </span>
+        </span>
+      </summary>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {box('Aporte da equipe', fmtEva(comp.seed.eva), 'aporte inicial')}
+        {box('Passes vendidos', fmtInt(comp.passes.count), `${fmtEva(comp.passes.eva)} · ${eva(GAME_PASS_EVA)} cada`)}
+        {box('Poções vendidas', fmtInt(comp.potions.count), `${fmtEva(comp.potions.eva)} · ${eva(POTION_EVA)} cada`)}
+        {box(
+          'Pagantes fora do top 100',
+          estimate ? fmtInt(estimate.payingOutside) : '—',
+          'estimativa: passes − top 100',
+        )}
+      </div>
+      <div className="space-y-1 text-sm">
+        <p>
+          {netLabel} = <strong className="tabular-nums">{fmtEva(net)}</strong>{' '}
+          {comp.balanced ? (
+            <span className="text-muted">✓ igual ao saldo on-chain</span>
+          ) : (
+            <span className="text-warn">⚠ diferente do saldo on-chain ({fmtEva(comp.balanceEva)})</span>
+          )}
+        </p>
+        <p className="text-muted">
+          <strong className="text-ink">{fmtInt(comp.passBuyers)}</strong> carteiras distintas compraram passe;{' '}
+          <strong className="text-ink">{fmtInt(comp.batchBuyers)}</strong> delas compraram mais de um (
+          {fmtInt(comp.batchPasses)} passes no total).
+        </p>
+        {comp.unknown.count > 0 && (
+          <p className="text-warn">
+            ⚠ {comp.unknown.count} transferência(s) não identificada(s) ({fmtEva(comp.unknown.eva)}): o valor não fecha
+            com nenhuma combinação de passes e poções.
+          </p>
+        )}
+        {comp.outgoing.count > 0 && (
+          <p className="text-warn">
+            ⚠ {comp.outgoing.count} saída(s) da carteira ({fmtEva(comp.outgoing.eva)}): a pool foi movimentada.
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {estimate && (
+          <div>
+            <h3 className="mb-2 text-sm text-muted">Quanto vale 100 mil de gold</h3>
+            <table className="w-full text-sm tabular-nums">
+              <thead>
+                <tr>
+                  <th className={`${th} text-left`}>Cenário</th>
+                  <th className={`${th} ${desk} text-right`}>Gold fora do top</th>
+                  <th className={`${th} text-right`}>USDT</th>
+                  <th className={`${th} ${desk} text-right`}>R$</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SCENARIOS.map(([s, label, note]) => {
+                  const usdt = per100k(s);
+                  const diff = per100k('optimistic') > 0 ? usdt / per100k('optimistic') - 1 : 0;
+                  return (
+                    <tr key={s} className={s === 'likely' ? 'bg-gold/10' : ''}>
+                      <td className={tdName}>
+                        <div className="font-medium">
+                          {label}
+                          {s === 'likely' && auto && <span className="text-xs font-normal text-gold"> · em destaque</span>}
+                        </div>
+                        <div className="text-xs text-muted">{note}</div>
+                        <div className={sub}>{fmtInt(estimate.outside[s])} de gold fora do top</div>
+                      </td>
+                      <td className={`${td} ${desk} text-right text-muted`}>{fmtInt(estimate.outside[s])}</td>
+                      <td className={`${td} text-right text-gold`}>
+                        {fmtNum(usdt)}
+                        {s !== 'optimistic' && <div className="text-xs text-muted">{fmtPct(diff)}</div>}
+                        <div className={sub}>{brl(usdt, pool)}</div>
+                      </td>
+                      <td className={`${td} ${desk} text-right`}>{brl(usdt, pool)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <DailyChart daily={comp.daily} />
+      </div>
+
+      <p className="text-xs text-muted">
+        {fmtInt(comp.transfersIn)} transferências de EVA recebidas · lidas até o bloco {fmtInt(comp.block)} ·{' '}
+        {comp.stale ? (
+          <span className="text-warn">⚠ RPC indisponível — dados de {fmtTime(comp.updatedAt)}</span>
+        ) : (
+          <>atualizado às {fmtTime(comp.updatedAt)}</>
+        )}{' '}
+        ·{' '}
+        <a
+          href={`https://arbiscan.io/address/${PRIZE_WALLET}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-gold underline"
+        >
+          carteira da pool no Arbiscan
+        </a>
+      </p>
+    </details>
+  );
+}
+
 export function PlayerSearch({
   rows,
   levels,
   pool,
+  band,
   nick,
   setNick,
 }: {
   rows: RankedPlayer[];
   levels: PlayerLevel[];
   pool: PoolData;
+  band: Band;
   nick: string;
   setNick: (v: string) => void;
 }) {
@@ -179,7 +491,7 @@ export function PlayerSearch({
             <div className="text-xs text-muted">{fmtPct(hit.share)} do gold total</div>
           </Stat>
           <Stat label="Ganho estimado">
-            <Money usdt={hit.usdt} pool={pool} />
+            <Money usdt={hit.usdt} pool={pool} range={rangeOf(hit.gold, band)} />
           </Stat>
           <Stat label="Para subir uma posição">
             {above && hit.toNext !== null ? (
@@ -262,12 +574,14 @@ const sortValue = (r: ClassedPlayer, key: ColKey): number | string => {
 export function RankingTable({
   rows,
   pool,
+  band,
   selected,
   outside,
   byClass = false,
 }: {
   rows: ClassedPlayer[];
   pool: PoolData;
+  band: Band;
   selected: string;
   outside: number;
   byClass?: boolean;
@@ -294,12 +608,30 @@ export function RankingTable({
   const toggle = (key: ColKey) =>
     setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: ASC_FIRST.includes(key) }));
   const sel = selected.trim().toLowerCase();
-  const usdtCell = (usdt: number) => (
-    <>
-      {fmtNum(usdt)}
-      <div className={sub}>{brl(usdt, pool)}</div>
-    </>
-  );
+  // valor provável + faixa embaixo (pior caso–otimista); no celular o R$ vai numa linha a mais
+  const usdtCell = (usdt: number, gold: number) => {
+    const r = rangeOf(gold, band);
+    return (
+      <>
+        {fmtNum(usdt)}
+        {r && (
+          <div className={rangeCls}>
+            {fmtNum(r[0])}–{fmtNum(r[1])}
+          </div>
+        )}
+        <div className={sub}>{brl(usdt, pool)}</div>
+      </>
+    );
+  };
+  const brlCell = (usdt: number, gold: number) => {
+    const r = rangeOf(gold, band);
+    return (
+      <>
+        {brl(usdt, pool)}
+        {r && <div className={rangeCls}>{brlRange(r, pool, '–')}</div>}
+      </>
+    );
+  };
   const cell = (key: ColKey, r: ClassedPlayer): [string, ReactNode] => {
     switch (key) {
       case 'rank':
@@ -317,7 +649,7 @@ export function RankingTable({
       case 'share':
         return ['text-muted', fmtPct(r.share)];
       case 'usdt':
-        return ['text-gold', usdtCell(r.usdt)];
+        return ['text-gold', usdtCell(r.usdt, r.gold)];
       default:
         return ['', null];
     }
@@ -326,7 +658,7 @@ export function RankingTable({
     if (key === 'player') return 'Total exibido';
     if (key === 'gold') return fmtInt(sum('gold'));
     if (key === 'share') return fmtPct(sum('share'));
-    if (key === 'usdt') return usdtCell(sum('usdt'));
+    if (key === 'usdt') return usdtCell(sum('usdt'), sum('gold'));
     return null;
   };
   const colClass = (c: Col) => `${c.desktopOnly ? desk : ''} ${c.right ? 'text-right' : ''}`;
@@ -350,7 +682,8 @@ export function RankingTable({
           </select>
         </label>
         <span className="text-muted">{shown.length} jogadores</span>
-        {outside > 0 && <span className="text-warn">inclui {fmtInt(outside)} de gold fora do top 100</span>}
+        {outside > 0 && <span className="text-muted">inclui {fmtInt(outside)} de gold estimado fora do top 100</span>}
+        {band && <span className="text-muted">embaixo do ganho: faixa entre o pior caso e o otimista</span>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
@@ -404,7 +737,7 @@ export function RankingTable({
                     </td>
                   );
                 })}
-                <td className={`${td} ${desk} text-right`}>{brl(r.usdt, pool)}</td>
+                <td className={`${td} ${desk} text-right`}>{brlCell(r.usdt, r.gold)}</td>
               </tr>
             ))}
           </tbody>
@@ -415,7 +748,7 @@ export function RankingTable({
                   {foot(c.key)}
                 </td>
               ))}
-              <td className={`${td} ${desk} text-right`}>{brl(sum('usdt'), pool)}</td>
+              <td className={`${td} ${desk} text-right`}>{brlCell(sum('usdt'), sum('gold'))}</td>
             </tr>
           </tfoot>
         </table>
@@ -529,14 +862,22 @@ function ClassBars({ title, items }: { title: string; items: { cls: ClassKey; va
 
 const fmtLevel = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
 
-function ClassCard({ s, place, pool }: { s: ClassStats; place: number; pool: PoolData }) {
+function ClassCard({ s, place, pool, band }: { s: ClassStats; place: number; pool: PoolData; band: Band }) {
   const info = CLASS_INFO[s.cls];
-  const money = (usdt: number) => (
-    <>
-      {fmtNum(usdt)}
-      <div className="text-xs font-normal text-muted">{brl(usdt, pool)}</div>
-    </>
-  );
+  const money = (usdt: number, gold: number) => {
+    const r = rangeOf(gold, band);
+    return (
+      <>
+        {fmtNum(usdt)}
+        {r && (
+          <div className={rangeCls}>
+            {fmtNum(r[0])}–{fmtNum(r[1])}
+          </div>
+        )}
+        <div className="text-xs font-normal text-muted">{brl(usdt, pool)}</div>
+      </>
+    );
+  };
   return (
     <div className="panel space-y-3 p-4">
       <div className={`-mx-4 -mt-4 h-1.5 ${info.bar}`} />
@@ -561,8 +902,8 @@ function ClassCard({ s, place, pool }: { s: ClassStats; place: number; pool: Poo
               Ganho
               <div className="text-xs">USDT</div>
             </td>
-            <td className="py-1 text-right font-semibold text-gold">{money(s.usdt)}</td>
-            <td className="bg-gold/5 py-1 pr-1 text-right font-semibold">{money(s.avgUsdt)}</td>
+            <td className="py-1 text-right font-semibold text-gold">{money(s.usdt, s.gold)}</td>
+            <td className="bg-gold/5 py-1 pr-1 text-right font-semibold">{money(s.avgUsdt, s.avgGold)}</td>
           </tr>
           <tr>
             <td className="py-1 text-muted">Gold</td>
@@ -597,18 +938,21 @@ export function ClassesTab({
   players,
   levels,
   pool,
+  band,
   selected,
   outside,
 }: {
   players: ClassedPlayer[];
   levels: PlayerLevel[];
   pool: PoolData;
+  band: Band;
   selected: string;
   outside: number;
 }) {
   const stats = classStats(players, levels);
   const known = stats.filter((s) => s.cls !== 'unknown');
   const unknown = stats[stats.length - 1];
+  const unknownRange = rangeOf(unknown.gold, band);
   const total = stats.reduce((sum, s) => sum + s.usdt, 0);
   return (
     <div className="space-y-6">
@@ -625,7 +969,7 @@ export function ClassesTab({
 
       <div className="grid gap-4 lg:grid-cols-3">
         {known.map((s, i) => (
-          <ClassCard key={s.cls} s={s} place={i + 1} pool={pool} />
+          <ClassCard key={s.cls} s={s} place={i + 1} pool={pool} band={band} />
         ))}
       </div>
 
@@ -641,6 +985,11 @@ export function ClassesTab({
             <span className="font-semibold text-gold">{fmtUsdt(unknown.usdt)}</span>{' '}
             <span className="text-muted">{brl(unknown.usdt, pool)}</span>
           </span>
+          {unknownRange && (
+            <span className="text-xs text-muted tabular-nums">
+              entre {fmtNum(unknownRange[0])} e {fmtUsdt(unknownRange[1])}
+            </span>
+          )}
         </div>
         <p className="mt-2 text-xs text-muted">
           Soma das 4: <span className="text-ink">{fmtUsdt(total)}</span>, o mesmo total do ranking individual na aba
@@ -661,7 +1010,7 @@ export function ClassesTab({
 
       <div>
         <h3 className="mb-3 font-pixel text-[10px] leading-relaxed text-gold sm:text-xs">Jogadores por classe</h3>
-        <RankingTable rows={players} pool={pool} selected={selected} outside={outside} byClass />
+        <RankingTable rows={players} pool={pool} band={band} selected={selected} outside={outside} byClass />
       </div>
     </div>
   );
@@ -671,16 +1020,22 @@ export function Simulator({
   players,
   perGold,
   pool,
+  band,
+  estimate,
   top100,
   outside,
+  auto,
   setOutside,
 }: {
   players: Player[];
   perGold: number;
   pool: PoolData;
+  band: Band;
+  estimate: Estimate | null;
   top100: number;
   outside: number;
-  setOutside: (v: number) => void;
+  auto: boolean; // gold fora do top = estimativa on-chain (cenário provável)
+  setOutside: (v: number | null) => void; // null = volta para a estimativa
 }) {
   const [gold, setGold] = useState(1_000_000);
   const pos = rankFor(players, gold);
@@ -703,7 +1058,7 @@ export function Simulator({
           <span className="text-xs text-muted">{fmtInt(gold)} GOLD</span>
         </label>
         <div>
-          <Money usdt={gold * perGold} pool={pool} big />
+          <Money usdt={gold * perGold} pool={pool} big range={rangeOf(gold, band)} />
           <p className="text-xs text-muted">
             ficaria em #{pos}
             {pos > 100 && ' (fora do top 100 público)'}
@@ -728,6 +1083,17 @@ export function Simulator({
           Afeta todos os valores da página. Gold total considerado: {fmtInt(top100 + outside)} ({fmtInt(top100)} do
           top 100 + {fmtInt(outside)} fora dele).
         </p>
+        {estimate && (
+          <p className="text-xs text-muted">
+            {auto ? 'Começa na estimativa on-chain' : 'Estimativa on-chain'}: {fmtInt(estimate.outside.likely)}{' '}
+            (provável) · pior caso {fmtInt(estimate.outside.worst)}.{' '}
+            {!auto && (
+              <button onClick={() => setOutside(null)} className="text-gold underline">
+                Voltar para a estimativa
+              </button>
+            )}
+          </p>
+        )}
       </div>
     </section>
   );
@@ -742,17 +1108,27 @@ export function Disclaimers() {
           <strong className="text-ink">Site não oficial</strong>, sem vínculo com a Ever Magic.
         </li>
         <li>
-          O ranking público mostra só o top 100, então o gold total está subestimado e os valores exibidos tendem a
-          ser <strong className="text-ink">maiores</strong> que os reais.
+          O ranking público mostra só o top 100 de gold. A <strong className="text-ink">faixa de ganho</strong> é
+          estimada a partir dos passes vendidos on-chain, supondo que todo o top 100 tem passe e que nenhum jogador de
+          fora tem mais gold que o 100º colocado. O valor em destaque é o cenário provável (cada pagante de fora com{' '}
+          {OUTSIDE_LIKELY_FACTOR * 100}% do gold do 100º).
         </li>
         <li>
-          Ainda não está confirmado se conta o saldo final de GOLD ou o GOLD gerado na season, nem se os 75% são
-          proporcionais ou por posição.
+          Compras feitas por fora dessa carteira (se existirem, ex.: outros meios de pagamento) não entram na
+          contagem.
         </li>
-        <li>Valores em EVA variam com o preço do token. Não é garantia de prêmio nem recomendação de investimento.</li>
+        <li>Jogadores no modo demo, sem passe, não entram na conta.</li>
+        <li>
+          Ainda não está confirmado oficialmente se conta o saldo final de gold ou o gold gerado na season, nem se os
+          75% são proporcionais ou por posição.
+        </li>
+        <li>
+          Os valores em EVA variam com o preço do token. Não é garantia de prêmio nem recomendação de investimento.
+        </li>
       </ul>
       <p className="text-xs">
-        Fontes: ranking e preço do EVA em na-bridge.evermagic.io (os mesmos do site oficial); saldo da carteira{' '}
+        Fontes: ranking e preço do EVA em na-bridge.evermagic.io (os mesmos do site oficial); saldo e transferências
+        de EVA (aporte, passes e poções) da carteira{' '}
         <a
           href={`https://arbiscan.io/address/${PRIZE_WALLET}`}
           target="_blank"
@@ -807,7 +1183,7 @@ export function StickyNotice() {
       href="#avisos"
       className="fixed inset-x-0 bottom-0 z-10 border-t-2 border-gold-dim bg-bg/95 px-4 py-2 text-center text-xs text-gold backdrop-blur"
     >
-      ⚠ Site não oficial · estimativa que tende a ficar acima do real · ver avisos
+      ⚠ Site não oficial · ganho estimado em faixa, não é garantia · ver avisos
     </a>
   );
 }

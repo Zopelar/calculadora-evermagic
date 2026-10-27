@@ -1,11 +1,27 @@
 import { isAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
-import { DONATION_WALLET, EVA_TOKEN, PRIZE_WALLET, SPLIT, USDT_TOKEN } from './config';
+import {
+  DONATION_WALLET,
+  EVA_TOKEN,
+  GAME_PASS_EVA,
+  LOGS_WINDOW_BLOCKS,
+  POTION_EVA,
+  PRIZE_WALLET,
+  SEED_EVA,
+  SEED_FROM,
+  SPLIT,
+  USDT_TOKEN,
+} from './config';
 
 // Protege as edições manuais do config.ts.
 describe('config', () => {
   it('endereços são válidos (inclui checksum: pega erro de digitação em endereço com maiúsculas)', () => {
-    for (const address of [PRIZE_WALLET, EVA_TOKEN, USDT_TOKEN]) expect(isAddress(address), address).toBe(true);
+    for (const address of [PRIZE_WALLET, EVA_TOKEN, USDT_TOKEN, SEED_FROM]) expect(isAddress(address), address).toBe(true);
+  });
+
+  it('preços em EVA são decimais positivos e a janela de logs respeita o limite do RPC', () => {
+    for (const price of [GAME_PASS_EVA, POTION_EVA, SEED_EVA]) expect(Number(price), price).toBeGreaterThan(0);
+    expect(LOGS_WINDOW_BLOCKS).toBeLessThanOrEqual(10_000_000);
   });
 
   it('carteira de doação vazia (seção escondida) ou endereço válido', () => {
