@@ -1,4 +1,4 @@
-import { SPLIT } from '../config';
+import { OUTSIDE_LIKELY_FACTOR, SPLIT } from '../config';
 
 export type Player = { player: string; guild: string | null; gold: number };
 export type GuildInfo = { guild: string; level: number; gp: number; members: number };
@@ -43,6 +43,38 @@ export const totalGold =(players: Player[], outsideTop = 0) =>
 
 export const valuePerGold = (individualUsdt: number, goldTotal: number) =>
   goldTotal > 0 ? individualUsdt / goldTotal : 0;
+
+export type Scenario = 'optimistic' | 'likely' | 'worst';
+export type Estimate = {
+  passes: number; // passes vendidos (on-chain)
+  payingOutside: number; // pagantes estimados fora do top 100
+  gold100: number; // gold do último colocado do ranking público
+  outside: Record<Scenario, number>; // gold estimado fora do top 100
+  perGold: Record<Scenario, number>;
+};
+
+// Gold fora do top 100 estimado pelos passes vendidos. Supõe que todo o top 100 tem passe e que ninguém
+// de fora tem mais gold que o 100º: otimista = os de fora não têm gold; provável = cada um com `factor`
+// do gold do 100º; pior caso = cada um com o gold do 100º.
+export function estimateOutside(
+  passes: number,
+  players: Player[],
+  individualUsdt: number,
+  factor = OUTSIDE_LIKELY_FACTOR,
+): Estimate {
+  const top = totalGold(players);
+  const gold100 = players.length ? Math.min(...players.map((p) => p.gold)) : 0;
+  const payingOutside = Math.max(0, passes - players.length);
+  const outside = { optimistic: 0, likely: payingOutside * gold100 * factor, worst: payingOutside * gold100 };
+  const perGold = (gold: number) => valuePerGold(individualUsdt, top + gold);
+  return {
+    passes,
+    payingOutside,
+    gold100,
+    outside,
+    perGold: { optimistic: perGold(outside.optimistic), likely: perGold(outside.likely), worst: perGold(outside.worst) },
+  };
+}
 
 export function rankPlayers(players: Player[], individualUsdt: number, goldTotal: number): RankedPlayer[] {
   const perGold = valuePerGold(individualUsdt, goldTotal);

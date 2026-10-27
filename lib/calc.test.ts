@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classStats,
+  estimateOutside,
   guildShares,
   joinLevels,
   poolSlices,
@@ -100,6 +101,45 @@ describe('rankPlayers', () => {
     const semFora = rankPlayers(TOP5, 750, totalGold(TOP5))[0].usdt;
     const comFora = rankPlayers(TOP5, 750, totalGold(TOP5, totalGold(TOP5)))[0].usdt;
     expect(comFora).toBeCloseTo(semFora / 2, 9);
+  });
+});
+
+describe('estimateOutside (faixa pelos passes vendidos on-chain)', () => {
+  // Referência de 27/10/2026 ~01h40: pool ≈ 15.720 USDT, top 100 ≈ 1,15 bi de gold, 100º ≈ 2,12 mi, 136 passes.
+  const top100: Player[] = Array.from({ length: 100 }, (_, i) => ({
+    player: `p${i}`,
+    guild: null,
+    gold: i === 99 ? 2_120_000 : (1_150_000_000 - 2_120_000) / 99,
+  }));
+  const est = estimateOutside(136, top100, 15_720 * 0.75);
+  const per100k = (s: 'optimistic' | 'likely' | 'worst') => 100_000 * est.perGold[s];
+
+  it('pagantes fora do top = passes − jogadores do ranking; gold fora pelo 100º colocado', () => {
+    expect(est).toMatchObject({ passes: 136, payingOutside: 36, gold100: 2_120_000 });
+    expect(est.outside).toEqual({ optimistic: 0, likely: 36 * 2_120_000 * 0.5, worst: 36 * 2_120_000 });
+  });
+
+  it('100 mil de gold: ≈ 1,03 otimista, ≈ 0,99 provável (−3%) e ≈ 0,96 no pior caso (−6%)', () => {
+    expect(per100k('optimistic')).toBeCloseTo(1.0252, 4);
+    expect(per100k('likely')).toBeCloseTo(0.9923, 4);
+    expect(per100k('worst')).toBeCloseTo(0.9614, 4);
+    expect(per100k('likely') / per100k('optimistic') - 1).toBeCloseTo(-0.032, 3);
+    expect(per100k('worst') / per100k('optimistic') - 1).toBeCloseTo(-0.062, 3);
+  });
+
+  it('otimista é o cálculo atual (só o top 100)', () => {
+    expect(est.perGold.optimistic).toBe(valuePerGold(15_720 * 0.75, totalGold(top100)));
+  });
+
+  it('menos passes que jogadores no ranking: ninguém pagante fora, faixa vira um valor só', () => {
+    const e = estimateOutside(80, top100, 1000);
+    expect(e.payingOutside).toBe(0);
+    expect(e.perGold.worst).toBe(e.perGold.optimistic);
+  });
+
+  it('fator do cenário provável é configurável; ranking vazio não gera NaN', () => {
+    expect(estimateOutside(136, top100, 1000, 0.25).outside.likely).toBe(36 * 2_120_000 * 0.25);
+    expect(estimateOutside(10, [], 1000)).toMatchObject({ payingOutside: 10, gold100: 0, perGold: { worst: 0 } });
   });
 });
 
