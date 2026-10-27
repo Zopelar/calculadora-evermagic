@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  estimateOutside,
   joinLevels,
   poolSlices,
   rankPlayers,
@@ -17,10 +18,12 @@ import {
   Disclaimers,
   GuildTable,
   PlayerSearch,
+  PoolComposition,
   PoolHeader,
   RankingTable,
   Simulator,
   StickyNotice,
+  type CompositionRes,
 } from './components';
 
 type Fetched = { updatedAt: number; stale: boolean };
@@ -46,7 +49,9 @@ export default function Home() {
   const [ranking, setRanking] = useState<RankingRes | null>(null);
   const [pool, setPool] = useState<PoolRes | null>(null);
   const [failed, setFailed] = useState(false);
-  const [outside, setOutside] = useState(0);
+  const [comp, setComp] = useState<CompositionRes | null>(null);
+  const [compFailed, setCompFailed] = useState(false);
+  const [outside, setOutside] = useState<number | null>(null); // null = estimativa on-chain (provável)
   const [nick, setNick] = useState('');
   const [tab, setTab] = useState<Tab>('players');
 
@@ -61,6 +66,13 @@ export default function Home() {
       setFailed(false);
       getJson<RankingRes>('/api/ranking').then(setRanking).catch(() => setFailed(true));
       getJson<PoolRes>('/api/pool').then(setPool).catch(() => setFailed(true));
+      // complementar e mais lenta na 1ª leitura: a página não espera por ela
+      getJson<CompositionRes>('/api/composition')
+        .then((c) => {
+          setComp(c);
+          setCompFailed(false);
+        })
+        .catch(() => setCompFailed(true));
     };
     load();
     const id = setInterval(load, 60_000); // checagem barata; a requisição só sai quando passa dos 5 min
@@ -73,7 +85,12 @@ export default function Home() {
 
   const slices = pool && poolSlices(pool);
   const top100 = ranking ? totalGold(ranking.players) : 0;
-  const goldTotal = top100 + outside;
+  // Faixa pelos passes vendidos on-chain; sem a composição, cai no cálculo de antes (só o top 100).
+  const estimate =
+    comp && ranking && slices ? estimateOutside(comp.passes.count, ranking.players, slices.individual) : null;
+  const band = estimate && estimate.payingOutside > 0 ? estimate.perGold : null;
+  const outsideGold = outside ?? estimate?.outside.likely ?? 0;
+  const goldTotal = top100 + outsideGold;
   const perGold = slices ? valuePerGold(slices.individual, goldTotal) : 0;
   const rows = ranking && slices ? rankPlayers(ranking.players, slices.individual, goldTotal) : [];
   const classed = ranking ? joinLevels(rows, ranking.levels) : []; // ranking de gold + classe/nível
@@ -102,7 +119,8 @@ export default function Home() {
               updatedAt={Math.min(ranking.updatedAt, pool.updatedAt)}
               stale={ranking.stale || pool.stale || failed}
             />
-            <PlayerSearch rows={rows} levels={ranking.levels} pool={pool} nick={nick} setNick={setNick} />
+            <PoolComposition comp={comp} failed={compFailed} estimate={estimate} pool={pool} auto={outside === null} />
+            <PlayerSearch rows={rows} levels={ranking.levels} pool={pool} band={band} nick={nick} setNick={setNick} />
             <section className="panel p-4 sm:p-6">
               <div role="tablist" className="mb-4 flex flex-wrap gap-2">
                 {TABS.map(([t, label]) => (
@@ -119,20 +137,32 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              {tab === 'players' && <RankingTable rows={classed} pool={pool} selected={nick} outside={outside} />}
+              {tab === 'players' && (
+                <RankingTable rows={classed} pool={pool} band={band} selected={nick} outside={outsideGold} />
+              )}
               {tab === 'guilds' && (
                 <GuildTable players={ranking.players} guilds={ranking.guilds} guildPool={slices.guilds} pool={pool} />
               )}
               {tab === 'classes' && (
-                <ClassesTab players={classed} levels={ranking.levels} pool={pool} selected={nick} outside={outside} />
+                <ClassesTab
+                  players={classed}
+                  levels={ranking.levels}
+                  pool={pool}
+                  band={band}
+                  selected={nick}
+                  outside={outsideGold}
+                />
               )}
             </section>
             <Simulator
               players={ranking.players}
               perGold={perGold}
               pool={pool}
+              band={band}
+              estimate={estimate}
               top100={top100}
-              outside={outside}
+              outside={outsideGold}
+              auto={outside === null}
               setOutside={setOutside}
             />
           </>

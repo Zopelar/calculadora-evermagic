@@ -29,6 +29,25 @@ export const PRIZE_WALLET = '0x139061180aDea785DD8A1a32e4A2B1188d2621A1';
 export const EVA_TOKEN = '0x45d9831d8751b2325f3dbf48db748723726e1c8c';
 export const USDT_TOKEN = '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9';
 
+// Composição da pool (transferências de EVA para a carteira). Preços da Season 0 Alpha, em EVA:
+// podem mudar numa próxima season.
+export const EVA_DECIMALS = 18;
+export const GAME_PASS_EVA = '0.682';
+export const POTION_EVA = '0.045';
+export const MAX_PASSES_PER_TRANSFER = 20; // a classificação testa de 0 a 20 passes por transferência
+// Aporte inicial da equipe (05/10/2026).
+export const SEED_EVA = '250';
+export const SEED_FROM = '0x0ba41972b01cb03bdc2b6466c9d2ec9a1bfab01b';
+// Leitura dos eventos Transfer: começa antes do aporte e anda em janelas abaixo do limite do RPC
+// público (10.000.000 blocos por eth_getLogs), com no máximo 5 chamadas ao mesmo tempo.
+export const POOL_FROM_BLOCK = 491_000_000;
+export const LOGS_WINDOW_BLOCKS = 9_000_000;
+export const RPC_CONCURRENCY = 5;
+export const COMPOSITION_CACHE_SECONDS = 600;
+
+// Cenário provável: cada pagante fora do top 100 tem, em média, esta fração do gold do 100º colocado.
+export const OUTSIDE_LIKELY_FACTOR = 0.5;
+
 // Carteira para doações (aceita só pela Arbitrum One). Vazio = a seção de doação não aparece no site.
 export const DONATION_WALLET: string = '0xDD180205d742452aD9Cdfd0A312181C178B5b18A';
 export const DONATION_TOKENS = 'EVA, USDT ou ETH';

@@ -15,6 +15,9 @@
   --color-mage: #a371f7;
   --color-archer: #147040;
   --color-unknown: #6e6781;
+  /* Entradas por dia (passes × poções): validadas no fundo dos painéis, ΔE 27 para daltonismo. */
+  --color-pass: #c98500;
+  --color-potion: #3987e5;
 }
 
 @theme inline {
