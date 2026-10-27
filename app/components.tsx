@@ -324,8 +324,21 @@ export function PoolComposition({
   );
   const per100k = (s: Scenario) => 100_000 * (estimate?.perGold[s] ?? 0);
   return (
-    <section className="panel space-y-5 p-4 sm:p-6">
-      <H2>Composição da pool</H2>
+    // Fechado por padrão; o resumo e os alertas ficam visíveis no cabeçalho.
+    <details className="group panel p-4 open:space-y-5 sm:p-6">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 [&::-webkit-details-marker]:hidden">
+        <h2 className="font-pixel text-xs leading-relaxed text-gold sm:text-sm">Composição da pool</h2>
+        <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted tabular-nums group-hover:text-ink">
+          {fmtInt(comp.passes.count)} passes · {fmtInt(comp.potions.count)} poções
+          {estimate && ` · ${fmtInt(estimate.payingOutside)} fora do top 100`}
+          {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
+            <span className="text-warn">⚠ ver alertas</span>
+          )}
+          <span aria-hidden className="text-sm text-gold transition-transform group-open:rotate-180">
+            ▾
+          </span>
+        </span>
+      </summary>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {box('Aporte da equipe', fmtEva(comp.seed.eva), 'aporte inicial')}
         {box('Passes vendidos', fmtInt(comp.passes.count), `${fmtEva(comp.passes.eva)} · ${eva(GAME_PASS_EVA)} cada`)}
@@ -424,7 +437,7 @@ export function PoolComposition({
           carteira da pool no Arbiscan
         </a>
       </p>
-    </section>
+    </details>
   );
 }
 
