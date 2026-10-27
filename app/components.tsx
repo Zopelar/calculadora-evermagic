@@ -310,6 +310,8 @@ export function PoolComposition({
           : 'Lendo as transferências da carteira da pool na Arbitrum…'}
       </p>
     );
+  // RPC fora (servidor serviu o último dado) ou a última atualização do navegador falhou
+  const stale = comp.stale || failed;
   const net = comp.seed.eva + comp.passes.eva + comp.potions.eva + comp.unknown.eva - comp.outgoing.eva;
   const netLabel = `Aporte + passes + poções${comp.unknown.count ? ' + não identificadas' : ''}${
     comp.outgoing.count ? ' − saídas' : ''
@@ -331,6 +333,11 @@ export function PoolComposition({
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted tabular-nums group-hover:text-ink">
           {fmtInt(comp.passes.count)} passes · {fmtInt(comp.potions.count)} poções
           {estimate && ` · ${fmtInt(estimate.payingOutside)} fora do top 100`}
+          {stale ? (
+            <span className="text-warn">⚠ sem atualizar desde {fmtTime(comp.updatedAt)}</span>
+          ) : (
+            ` · às ${fmtTime(comp.updatedAt)}`
+          )}
           {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
             <span className="text-warn">⚠ ver alertas</span>
           )}
@@ -422,8 +429,8 @@ export function PoolComposition({
 
       <p className="text-xs text-muted">
         {fmtInt(comp.transfersIn)} transferências de EVA recebidas · lidas até o bloco {fmtInt(comp.block)} ·{' '}
-        {comp.stale ? (
-          <span className="text-warn">⚠ RPC indisponível — dados de {fmtTime(comp.updatedAt)}</span>
+        {stale ? (
+          <span className="text-warn">⚠ sem atualizar desde {fmtTime(comp.updatedAt)}</span>
         ) : (
           <>atualizado às {fmtTime(comp.updatedAt)}</>
         )}{' '}
