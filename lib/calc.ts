@@ -3,6 +3,13 @@ import { OUTSIDE_LIKELY_FACTOR, SPLIT } from '../config';
 export type Player = { player: string; guild: string | null; gold: number };
 export type GuildInfo = { guild: string; level: number; gp: number; members: number };
 export type PlayerLevel = { player: string; class: string; guild: string | null; level: number };
+// Linha do ranking de nível como vem da API (lida pelo servidor ou, se ele não conseguir, pela página).
+export const toPlayerLevel = (p: PlayerLevel): PlayerLevel => ({
+  player: String(p.player),
+  class: String(p.class),
+  guild: p.guild || null,
+  level: Number(p.level) || 0,
+});
 export type PoolData = { eva: number; usdt: number; evaPrice: number; usdBrl: number | null }; // null = cotação indisponível
 
 export type RankedPlayer = Player & {

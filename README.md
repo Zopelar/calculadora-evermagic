@@ -38,7 +38,7 @@ curl http://localhost:3000/api/composition
 | --- | --- | --- |
 | Ranking de gold (top 100) | `GET na-bridge.evermagic.io/bridge/ranking/gold` | Mesmo endpoint da página oficial de leaderboard. Não exige `Origin`/`Referer`; tem rate limit (20 req/janela). |
 | Ranking de guildas | `GET na-bridge.evermagic.io/bridge/ranking/guild` | Traz nível, GP e total de membros de cada guilda. |
-| Ranking de nível (top 100) | `GET na-bridge.evermagic.io/bridge/ranking/level` | Única fonte da classe (`knight`, `archer`, `mage`). Vem junto em `/api/ranking`, com o mesmo cache. Usado na aba Classes, na coluna Classe da aba Jogadores e na busca. |
+| Ranking de nível (top 100) | `GET na-bridge.evermagic.io/bridge/ranking/level` | Única fonte da classe (`knight`, `archer`, `mage`). Vem junto em `/api/ranking`, com o mesmo cache. Às vezes trava para o servidor da Vercel (timeout de 4 s); aí a página busca direto na fonte (CORS liberado). Usado na aba Classes, na coluna Classe da aba Jogadores e na busca. |
 | Saldo da pool | Arbitrum One, `balanceOf` de EVA e USDT na carteira `0x139061180aDea785DD8A1a32e4A2B1188d2621A1` | Lido ao vivo via viem (multicall). |
 | Composição da pool | Arbitrum One, eventos `Transfer` do EVA para a carteira da pool (e saindo dela) | `/api/composition`. Lidos em janelas de 9.000.000 blocos (o RPC público aceita até 10.000.000 por `eth_getLogs`), no máximo 5 chamadas ao mesmo tempo, sem batch. Cada entrada é classificada em aporte, passes e poções. |
 | Preço do EVA | `GET na-bridge.evermagic.io/bridge/eva/price?amount=1` | Mesma fonte da página evermagic.io/prizepool. |
