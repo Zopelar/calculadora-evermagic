@@ -27,8 +27,7 @@ export async function GET() {
     return Response.json(
       {
         ...balances.data,
-        evaPrice: evaPrice.data.price,
-        evaPriceAt: evaPrice.data.updatedAt, // quando a fonte atualizou o preço
+        evaPrice: evaPrice.data,
         usdBrl: usdBrl?.data ?? null,
         updatedAt: Math.min(balances.at, evaPrice.at),
         stale: balances.stale || evaPrice.stale,
