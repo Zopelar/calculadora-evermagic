@@ -33,10 +33,12 @@ export async function fetchLevelRanking(): Promise<PlayerLevel[]> {
   }));
 }
 
-// Preço de 1 EVA em USDT, mesma fonte da página oficial da prize pool.
-export async function fetchEvaPrice(): Promise<number> {
-  const { price } = await getJson<{ price: string }>(EVA_PRICE_URL);
+// Preço de 1 EVA em USDT, mesma fonte da página oficial da prize pool, e quando a fonte o atualizou
+// (updatedAt; null se vier sem data ou inválida).
+export async function fetchEvaPrice(): Promise<{ price: number; updatedAt: number | null }> {
+  const { price, updatedAt } = await getJson<{ price: string; updatedAt?: string }>(EVA_PRICE_URL);
   const n = Number(price);
   if (!(n > 0)) throw new Error(`preço do EVA inválido: ${price}`);
-  return n;
+  const at = updatedAt ? Date.parse(updatedAt) : NaN;
+  return { price: n, updatedAt: Number.isFinite(at) ? at : null };
 }
