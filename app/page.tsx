@@ -27,7 +27,13 @@ import {
 } from './components';
 
 type Fetched = { updatedAt: number; stale: boolean };
-type RankingRes = Fetched & { players: Player[]; guilds: GuildInfo[]; levels: PlayerLevel[] };
+type RankingRes = Fetched & {
+  players: Player[];
+  guilds: GuildInfo[];
+  levels: PlayerLevel[];
+  sameSince?: number; // ranking de gold igual desde (ver lib/http.ts)
+  changedAfter?: number | null;
+};
 type PoolRes = Fetched & PoolData;
 
 const REFRESH_MS = 5 * 60_000; // mesmo intervalo do cache do servidor
@@ -116,6 +122,11 @@ export default function Home() {
             <PoolHeader
               pool={pool}
               slices={slices}
+              times={{
+                rankingSince: ranking.sameSince ?? ranking.updatedAt,
+                rankingChangedAfter: ranking.changedAfter ?? null,
+                lastPurchaseAt: comp?.lastPurchaseAt ?? null,
+              }}
               updatedAt={Math.min(ranking.updatedAt, pool.updatedAt)}
               stale={ranking.stale || pool.stale || failed}
             />

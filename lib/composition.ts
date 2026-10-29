@@ -164,6 +164,8 @@ export type Composition = {
   batchBuyers: number; // carteiras com mais de 1 passe (compra em lote)
   batchPasses: number; // passes dessas carteiras
   daily: DailyIn[]; // entradas de compras por dia (Brasília), sem buracos entre o 1º e o último dia
+  lastPurchaseBlock: number | null; // bloco da compra mais recente
+  lastPurchaseAt: number | null; // horário dela (ms), preenchido pela leitura on-chain
 };
 
 const nextDay = (day: string) => new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
@@ -177,6 +179,7 @@ export function summarize(scan: Scan, days: Map<number, string>, p: Prices = PRI
   const unknown = tally();
   const byWallet = new Map<string, number>();
   const byDay = new Map<string, { passes: number; potions: number }>();
+  let lastPurchaseBlock: number | null = null;
   for (const t of scan.in) {
     const c = classify(t, p);
     if (c.kind === 'seed' || c.kind === 'unknown') {
@@ -185,6 +188,7 @@ export function summarize(scan: Scan, days: Map<number, string>, p: Prices = PRI
       x.wei += t.value;
       continue;
     }
+    lastPurchaseBlock = Math.max(lastPurchaseBlock ?? 0, t.block);
     passes.count += c.passes;
     passes.wei += BigInt(c.passes) * p.pass;
     potions.count += c.potions;
@@ -232,5 +236,7 @@ export function summarize(scan: Scan, days: Map<number, string>, p: Prices = PRI
     batchBuyers: batch.length,
     batchPasses: batch.reduce((s, n) => s + n, 0),
     daily,
+    lastPurchaseBlock,
+    lastPurchaseAt: null,
   };
 }

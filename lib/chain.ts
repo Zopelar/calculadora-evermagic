@@ -98,5 +98,8 @@ export async function readComposition(): Promise<Composition> {
     scan.in.map((t) => t.block),
     async (block) => dayKey(await timestampOf(block)),
   );
-  return summarize(scan, days);
+  const c = summarize(scan, days);
+  // em geral é o bloco mais novo da lista acima, com o horário já guardado (sem chamada extra)
+  const lastPurchaseAt = c.lastPurchaseBlock === null ? null : (await timestampOf(c.lastPurchaseBlock)) * 1000;
+  return { ...c, lastPurchaseAt };
 }

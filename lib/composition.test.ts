@@ -264,6 +264,18 @@ describe('summarize', () => {
     expect(c).toMatchObject({ passBuyers: 2, batchBuyers: 1, batchPasses: 3 });
   });
 
+  it('bloco da última compra ignora aporte e transferência não identificada', () => {
+    const ins = [
+      transfer('0.682', { block: 50 }),
+      transfer('0.045', { block: 70 }),
+      transfer('250', { from: SEED_FROM, block: 80 }),
+      transfer('0.0001', { block: 90 }),
+    ];
+    const c = summarize({ block: 100, in: ins, out: [], balance: eva('250.7271') }, new Map());
+    expect(c).toMatchObject({ lastPurchaseBlock: 70, lastPurchaseAt: null });
+    expect(summarize({ block: 1, in: [], out: [], balance: BigInt(0) }, new Map()).lastPurchaseBlock).toBeNull();
+  });
+
   it('entradas por dia sem o aporte e com os dias sem compra preenchidos com zero', () => {
     const ins = [
       transfer('250', { from: SEED_FROM, block: 1 }),

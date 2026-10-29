@@ -28,7 +28,7 @@ import {
   type Slices,
 } from '@/lib/calc';
 import type { Composition, DailyIn } from '@/lib/composition';
-import { fmtBrl, fmtEva, fmtInt, fmtNum, fmtPct, fmtPrice, fmtTime, fmtUsdt } from '@/lib/format';
+import { fmtAgo, fmtBrl, fmtEva, fmtInt, fmtNum, fmtPct, fmtPrice, fmtTime, fmtUsdt } from '@/lib/format';
 
 // Valor em R$, ou '—' se a cotação estiver indisponível.
 const brl = (usdt: number, pool: PoolData) => (pool.usdBrl === null ? '—' : fmtBrl(usdt * pool.usdBrl));
@@ -104,14 +104,82 @@ function Countdown() {
   );
 }
 
+function useNow(intervalMs: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+// Quando cada fonte mudou de verdade, não só quando o site conferiu (as fontes não são em tempo real).
+export type SourceTimes = {
+  rankingSince: number; // ranking de gold igual desde esta leitura
+  rankingChangedAfter: number | null; // última leitura com o ranking anterior; null = mudança ainda não vista
+  lastPurchaseAt: number | null; // última compra on-chain; null = composição ainda não carregou
+};
+
+const CHANGE_GAP_MS = 6 * 60_000; // o servidor confere a cada 5 min: até aqui o horário da mudança é preciso
+
+function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt: number; stale: boolean }) {
+  const now = useNow(30_000);
+  const { rankingSince: since, rankingChangedAfter: after } = times;
+  // [rótulo, valor, observação]. Sem mudança vista, o horário é só desde quando o site observa (não é
+  // uma atualização do ranking).
+  const items: [string, string, string][] = [
+    after === null
+      ? ['Ranking de gold', 'nenhuma mudança vista ainda', `site observando desde ${fmtTime(since)}`]
+      : [
+          'Ranking de gold',
+          since - after <= CHANGE_GAP_MS
+            ? `mudou às ~${fmtTime(since)}`
+            : `mudou entre ${fmtTime(after)} e ${fmtTime(since)}`,
+          fmtAgo(since, now),
+        ],
+  ];
+  if (times.lastPurchaseAt !== null)
+    items.push([
+      'Pool (on-chain)',
+      `última compra às ${fmtTime(times.lastPurchaseAt)}`,
+      fmtAgo(times.lastPurchaseAt, now),
+    ]);
+  return (
+    <div className="space-y-2">
+      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-2 sm:gap-y-3">
+        {items.map(([label, value, note]) => (
+          <div key={label} className="border-b border-line py-1.5 text-xs sm:border-2 sm:p-3">
+            <dt className="text-muted">{label}</dt>
+            <dd className="tabular-nums">
+              <span className="text-ink sm:text-sm sm:font-semibold">{value}</span>
+              <span className="text-muted"> · {note}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-muted">
+        {stale ? (
+          <span className="text-warn">⚠ Fonte indisponível — dados de {fmtTime(updatedAt)}</span>
+        ) : (
+          <>
+            As fontes não são em tempo real. O site conferiu às {fmtTime(updatedAt)} e confere a cada 5 min.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function PoolHeader({
   pool,
   slices,
+  times,
   updatedAt,
   stale,
 }: {
   pool: PoolData;
   slices: Slices;
+  times: SourceTimes;
   updatedAt: number;
   stale: boolean;
 }) {
@@ -158,13 +226,7 @@ export function PoolHeader({
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted">
-        {stale ? (
-          <span className="text-warn">⚠ Fonte indisponível — dados de {fmtTime(updatedAt)}</span>
-        ) : (
-          <>Atualizado às {fmtTime(updatedAt)} · atualiza a cada 5 min</>
-        )}
-      </p>
+      <DataTimes times={times} updatedAt={updatedAt} stale={stale} />
     </section>
   );
 }
@@ -310,6 +372,8 @@ export function PoolComposition({
           : 'Lendo as transferências da carteira da pool na Arbitrum…'}
       </p>
     );
+  // RPC fora (servidor serviu o último dado) ou a última atualização do navegador falhou
+  const stale = comp.stale || failed;
   const net = comp.seed.eva + comp.passes.eva + comp.potions.eva + comp.unknown.eva - comp.outgoing.eva;
   const netLabel = `Aporte + passes + poções${comp.unknown.count ? ' + não identificadas' : ''}${
     comp.outgoing.count ? ' − saídas' : ''
@@ -331,6 +395,11 @@ export function PoolComposition({
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted tabular-nums group-hover:text-ink">
           {fmtInt(comp.passes.count)} passes · {fmtInt(comp.potions.count)} poções
           {estimate && ` · ${fmtInt(estimate.payingOutside)} fora do top 100`}
+          {stale ? (
+            <span className="text-warn">⚠ sem atualizar desde {fmtTime(comp.updatedAt)}</span>
+          ) : (
+            ` · última compra às ${fmtTime(comp.lastPurchaseAt ?? comp.updatedAt)}`
+          )}
           {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
             <span className="text-warn">⚠ ver alertas</span>
           )}
@@ -422,8 +491,8 @@ export function PoolComposition({
 
       <p className="text-xs text-muted">
         {fmtInt(comp.transfersIn)} transferências de EVA recebidas · lidas até o bloco {fmtInt(comp.block)} ·{' '}
-        {comp.stale ? (
-          <span className="text-warn">⚠ RPC indisponível — dados de {fmtTime(comp.updatedAt)}</span>
+        {stale ? (
+          <span className="text-warn">⚠ sem atualizar desde {fmtTime(comp.updatedAt)}</span>
         ) : (
           <>atualizado às {fmtTime(comp.updatedAt)}</>
         )}{' '}
