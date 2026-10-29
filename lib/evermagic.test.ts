@@ -64,10 +64,20 @@ describe('fetchGuildRanking / fetchLevelRanking', () => {
 });
 
 describe('fetchEvaPrice', () => {
-  it('lê o preço de 1 EVA em USDT, mesma fonte da página oficial', async () => {
-    const fn = mockFetch({ amount: '1', price: '42.408399', total: '42.408399' });
-    expect(await fetchEvaPrice()).toBe(42.408399);
+  it('lê o preço de 1 EVA em USDT e quando a fonte o atualizou, mesma fonte da página oficial', async () => {
+    const fn = mockFetch({
+      amount: '1',
+      price: '42.282722',
+      total: '42.282722',
+      updatedAt: '2026-10-29T00:03:01.014Z',
+    });
+    expect(await fetchEvaPrice()).toEqual({ price: 42.282722, updatedAt: Date.parse('2026-10-29T00:03:01.014Z') });
     expect(fn.mock.calls[0][0]).toBe('https://na-bridge.evermagic.io/bridge/eva/price?amount=1');
+  });
+
+  it.each([[undefined], ['ontem']])('sem data válida (%s) o preço continua valendo, só sem horário', async (updatedAt) => {
+    mockFetch({ price: '42.408399', updatedAt });
+    expect(await fetchEvaPrice()).toEqual({ price: 42.408399, updatedAt: null });
   });
 
   it.each([['0'], ['abc'], [undefined]])('rejeita preço inválido (%s) em vez de zerar a pool', async (price) => {
