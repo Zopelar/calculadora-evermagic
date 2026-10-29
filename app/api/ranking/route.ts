@@ -17,6 +17,9 @@ export async function GET() {
         guilds: guilds?.data ?? [],
         levels: levels?.data ?? [],
         updatedAt: gold.at,
+        // a API não informa quando o ranking muda: é a leitura em que vimos o ranking de gold diferente
+        sameSince: gold.sameSince,
+        changedAfter: gold.changedAfter,
         stale: gold.stale,
       },
       { headers: CACHE_HEADERS },

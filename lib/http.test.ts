@@ -33,7 +33,40 @@ describe('cached', () => {
     const r = await cached('queda', async () => {
       throw new Error('HTTP 502');
     });
-    expect(r).toEqual({ data: 'dados das 22:00', at: Date.parse('2026-10-24T22:00:00Z'), stale: true });
+    expect(r).toMatchObject({ data: 'dados das 22:00', at: Date.parse('2026-10-24T22:00:00Z'), stale: true });
+  });
+
+  it('registra quando o conteúdo mudou e entre quais leituras', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-28T21:00:00Z') });
+    let ranking = 'v1';
+    const load = async () => ranking;
+    // 1ª leitura: não dá para saber quando a fonte mudou, só que está assim desde agora
+    const first = Date.parse('2026-10-28T21:00:00Z');
+    expect(await cached('mudou', load)).toMatchObject({ sameSince: first, changedAfter: null });
+    vi.setSystemTime(new Date('2026-10-28T21:05:01Z'));
+    expect(await cached('mudou', load)).toMatchObject({ sameSince: first, changedAfter: null }); // igual
+    ranking = 'v2';
+    vi.setSystemTime(new Date('2026-10-28T21:10:02Z'));
+    expect(await cached('mudou', load)).toMatchObject({
+      data: 'v2',
+      sameSince: Date.parse('2026-10-28T21:10:02Z'),
+      changedAfter: Date.parse('2026-10-28T21:05:01Z'),
+    });
+    vi.setSystemTime(new Date('2026-10-28T21:15:03Z'));
+    const same = await cached('mudou', load); // nova leitura igual: mantém a última mudança
+    expect(same).toMatchObject({
+      at: Date.parse('2026-10-28T21:15:03Z'),
+      sameSince: Date.parse('2026-10-28T21:10:02Z'),
+      changedAfter: Date.parse('2026-10-28T21:05:01Z'),
+    });
+  });
+
+  it('compara o conteúdo, não a referência (objetos novos e iguais não contam como mudança)', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-28T21:00:00Z') });
+    const load = async () => [{ player: 'Ever', gold: 1 }];
+    await cached('mesmo-conteudo', load);
+    vi.setSystemTime(new Date('2026-10-28T21:05:01Z'));
+    expect((await cached('mesmo-conteudo', load)).changedAfter).toBeNull();
   });
 
   it('depois de uma falha sem dado guardado, não insiste na fonte por 1 minuto', async () => {
