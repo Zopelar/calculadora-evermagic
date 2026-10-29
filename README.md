@@ -70,8 +70,9 @@ quando o site conferiu):
 - **Pool (on-chain)**: horário do bloco da última compra.
 - **Ranking de gold**: a API não informa data. O cache (`cached` em `lib/http.ts`) compara cada leitura
   com a anterior e guarda `sameSince` (1ª leitura com o conteúdo atual) e `changedAfter` (última leitura
-  com o conteúdo antigo). Como fica em memória, depois que a instância reinicia o site mostra "nenhuma
-  mudança vista ainda" até ver a próxima mudança.
+  com o conteúdo antigo). Como fica em memória, uma instância recém-iniciada não viu a mudança; por isso a
+  aba também compara cada ranking que recebe com o anterior (`trackChange` em `lib/change.ts`). Só
+  aparece "nenhuma mudança vista ainda" enquanto nem o servidor nem a aba viram o ranking mudar.
 
 ## Cálculo
 
