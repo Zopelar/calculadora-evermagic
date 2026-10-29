@@ -34,7 +34,7 @@ type RankingRes = Fetched & {
   sameSince?: number; // ranking de gold igual desde (ver lib/http.ts)
   changedAfter?: number | null;
 };
-type PoolRes = Fetched & PoolData & { evaPriceAt?: number | null };
+type PoolRes = Fetched & PoolData;
 
 const REFRESH_MS = 5 * 60_000; // mesmo intervalo do cache do servidor
 
@@ -125,7 +125,6 @@ export default function Home() {
               times={{
                 rankingSince: ranking.sameSince ?? ranking.updatedAt,
                 rankingChangedAfter: ranking.changedAfter ?? null,
-                evaPriceAt: pool.evaPriceAt ?? null,
                 lastPurchaseAt: comp?.lastPurchaseAt ?? null,
               }}
               updatedAt={Math.min(ranking.updatedAt, pool.updatedAt)}

@@ -117,7 +117,6 @@ function useNow(intervalMs: number) {
 export type SourceTimes = {
   rankingSince: number; // ranking de gold igual desde esta leitura
   rankingChangedAfter: number | null; // última leitura com o ranking anterior; null = mudança ainda não vista
-  evaPriceAt: number | null; // informado pela própria fonte do preço
   lastPurchaseAt: number | null; // última compra on-chain; null = composição ainda não carregou
 };
 
@@ -137,12 +136,11 @@ function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt:
       since,
     ],
   ];
-  if (times.evaPriceAt !== null) items.push(['Preço do EVA', `atualizado às ${fmtTime(times.evaPriceAt)}`, times.evaPriceAt]);
   if (times.lastPurchaseAt !== null)
     items.push(['Pool (on-chain)', `última compra às ${fmtTime(times.lastPurchaseAt)}`, times.lastPurchaseAt]);
   return (
     <div className="space-y-2">
-      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-3 sm:gap-y-3">
+      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-2 sm:gap-y-3">
         {items.map(([label, value, at]) => (
           <div
             key={label}

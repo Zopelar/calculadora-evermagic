@@ -67,7 +67,6 @@ fator do cenário provável ficam em [config.ts](config.ts).
 As fontes não são em tempo real, então o topo da página mostra quando cada uma mudou de verdade (não só
 quando o site conferiu):
 
-- **Preço do EVA**: `updatedAt` que o próprio `/eva/price` devolve.
 - **Pool (on-chain)**: horário do bloco da última compra.
 - **Ranking de gold**: a API não informa data. O cache (`cached` em `lib/http.ts`) compara cada leitura
   com a anterior e guarda `sameSince` (1ª leitura com o conteúdo atual) e `changedAfter` (última leitura
