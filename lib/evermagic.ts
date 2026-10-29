@@ -1,9 +1,9 @@
 import { EVA_PRICE_URL, RANKING_GOLD_URL, RANKING_GUILD_URL, RANKING_LEVEL_URL } from '../config';
-import type { GuildInfo, Player, PlayerLevel } from './calc';
+import { toPlayerLevel, type GuildInfo, type Player, type PlayerLevel } from './calc';
 import { getJson } from './http';
 
-async function getRanking<T>(url: string): Promise<T[]> {
-  const { ranking } = await getJson<{ ranking: T[] }>(url);
+async function getRanking<T>(url: string, timeoutMs?: number): Promise<T[]> {
+  const { ranking } = await getJson<{ ranking: T[] }>(url, timeoutMs);
   if (!Array.isArray(ranking)) throw new Error(`${url}: formato inesperado`);
   return ranking;
 }
@@ -23,14 +23,11 @@ export async function fetchGuildRanking(): Promise<GuildInfo[]> {
   }));
 }
 
+// Esta rota às vezes trava para o servidor da Vercel (e responde normal ao navegador, que busca direto:
+// app/page.tsx). Timeout curto para não segurar a resposta do ranking inteiro.
 export async function fetchLevelRanking(): Promise<PlayerLevel[]> {
-  const ranking = await getRanking<PlayerLevel>(RANKING_LEVEL_URL);
-  return ranking.map((p) => ({
-    player: String(p.player),
-    class: String(p.class),
-    guild: p.guild || null,
-    level: Number(p.level) || 0,
-  }));
+  const ranking = await getRanking<PlayerLevel>(RANKING_LEVEL_URL, 4_000);
+  return ranking.map(toPlayerLevel);
 }
 
 // Preço de 1 EVA em USDT, mesma fonte da página oficial da prize pool.

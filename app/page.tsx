@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { RANKING_LEVEL_URL } from '@/config';
 import {
   estimateOutside,
   joinLevels,
   poolSlices,
   rankPlayers,
+  toPlayerLevel,
   totalGold,
   valuePerGold,
   type GuildInfo,
@@ -45,10 +47,21 @@ const TABS: [Tab, string][] = [
   ['classes', 'Classes'],
 ];
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   return res.json();
+}
+
+// O ranking de nível às vezes trava para o servidor da Vercel, mas responde ao navegador (a fonte libera
+// CORS). Se o servidor vier sem ele, a página busca direto na fonte; se também falhar, segue sem classes.
+async function getRanking(): Promise<RankingRes> {
+  const r = await getJson<RankingRes>('/api/ranking');
+  if (r.levels.length > 0) return r;
+  const levels = await getJson<{ ranking?: PlayerLevel[] }>(RANKING_LEVEL_URL, { signal: AbortSignal.timeout(5_000) })
+    .then(({ ranking }) => (Array.isArray(ranking) ? ranking.map(toPlayerLevel) : []))
+    .catch(() => []);
+  return { ...r, levels };
 }
 
 export default function Home() {
@@ -70,7 +83,7 @@ export default function Home() {
       if (document.hidden || Date.now() - last < REFRESH_MS) return;
       last = Date.now();
       setFailed(false);
-      getJson<RankingRes>('/api/ranking').then(setRanking).catch(() => setFailed(true));
+      getRanking().then(setRanking).catch(() => setFailed(true));
       getJson<PoolRes>('/api/pool').then(setPool).catch(() => setFailed(true));
       // complementar e mais lenta na 1ª leitura: a página não espera por ela
       getJson<CompositionRes>('/api/composition')
