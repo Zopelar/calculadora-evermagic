@@ -159,8 +159,7 @@ function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt:
           <span className="text-warn">⚠ Fonte indisponível — dados de {fmtTime(updatedAt)}</span>
         ) : (
           <>
-            As fontes não são em tempo real: acima, quando cada uma mudou. O site conferiu às {fmtTime(updatedAt)} e
-            confere a cada 5 min.
+            As fontes não são em tempo real. O site conferiu às {fmtTime(updatedAt)} e confere a cada 5 min.
           </>
         )}
       </p>
