@@ -125,11 +125,11 @@ const CHANGE_GAP_MS = 6 * 60_000; // o servidor confere a cada 5 min: até aqui 
 function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt: number; stale: boolean }) {
   const now = useNow(30_000);
   const { rankingSince: since, rankingChangedAfter: after } = times;
-  // [rótulo, valor, observação]. Sem mudança vista, o horário é só desde quando o site observa (não é
-  // uma atualização do ranking).
-  const items: [string, string, string][] = [
+  // [rótulo, valor, tempo decorrido]. Sem mudança vista, não há horário a mostrar: o servidor só sabe
+  // desde quando observa, e isso não é uma atualização do ranking.
+  const items: [string, string, string | null][] = [
     after === null
-      ? ['Ranking de gold', 'nenhuma mudança vista ainda', `site observando desde ${fmtTime(since)}`]
+      ? ['Ranking de gold', 'nenhuma mudança vista ainda', null]
       : [
           'Ranking de gold',
           since - after <= CHANGE_GAP_MS
@@ -152,7 +152,7 @@ function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt:
             <dt className="text-muted">{label}</dt>
             <dd className="tabular-nums">
               <span className="text-ink sm:text-sm sm:font-semibold">{value}</span>
-              <span className="text-muted"> · {note}</span>
+              {note && <span className="text-muted"> · {note}</span>}
             </dd>
           </div>
         ))}
