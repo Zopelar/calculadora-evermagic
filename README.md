@@ -62,6 +62,18 @@ fator do cenário provável ficam em [config.ts](config.ts).
 - A página não espera por `/api/composition`: carrega com o cálculo de antes e a faixa aparece quando a
   composição chega. Se ela falhar, os ganhos ficam sem faixa (só o top 100), como antes.
 
+### Quando cada fonte mudou
+
+As fontes não são em tempo real, então o topo da página mostra quando cada uma mudou de verdade (não só
+quando o site conferiu):
+
+- **Preço do EVA**: `updatedAt` que o próprio `/eva/price` devolve.
+- **Pool (on-chain)**: horário do bloco da última compra.
+- **Ranking de gold**: a API não informa data. O cache (`cached` em `lib/http.ts`) compara cada leitura
+  com a anterior e guarda `sameSince` (1ª leitura com o conteúdo atual) e `changedAfter` (última leitura
+  com o conteúdo antigo). Como fica em memória, depois que a instância reinicia o site só sabe dizer
+  "sem mudança desde HH:MM" até ver a próxima mudança.
+
 ## Cálculo
 
 ```
