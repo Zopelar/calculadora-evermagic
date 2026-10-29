@@ -13,6 +13,7 @@ import {
   type PlayerLevel,
   type PoolData,
 } from '@/lib/calc';
+import { trackChange, type Reading } from '@/lib/change';
 import {
   ClassesTab,
   Disclaimers,
@@ -35,6 +36,15 @@ type RankingRes = Fetched & {
   changedAfter?: number | null;
 };
 type PoolRes = Fetched & PoolData;
+// gold = quando o ranking de gold mudou, juntando o que o servidor e esta aba viram (lib/change.ts)
+type Ranking = RankingRes & { gold: Reading };
+
+const goldReading = (r: RankingRes): Reading => ({
+  sig: JSON.stringify(r.players),
+  at: r.updatedAt,
+  since: r.sameSince ?? r.updatedAt,
+  after: r.changedAfter ?? null,
+});
 
 const REFRESH_MS = 5 * 60_000; // mesmo intervalo do cache do servidor
 
@@ -52,7 +62,7 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export default function Home() {
-  const [ranking, setRanking] = useState<RankingRes | null>(null);
+  const [ranking, setRanking] = useState<Ranking | null>(null);
   const [pool, setPool] = useState<PoolRes | null>(null);
   const [failed, setFailed] = useState(false);
   const [comp, setComp] = useState<CompositionRes | null>(null);
@@ -70,7 +80,9 @@ export default function Home() {
       if (document.hidden || Date.now() - last < REFRESH_MS) return;
       last = Date.now();
       setFailed(false);
-      getJson<RankingRes>('/api/ranking').then(setRanking).catch(() => setFailed(true));
+      getJson<RankingRes>('/api/ranking')
+        .then((r) => setRanking((prev) => ({ ...r, gold: trackChange(prev?.gold ?? null, goldReading(r)) })))
+        .catch(() => setFailed(true));
       getJson<PoolRes>('/api/pool').then(setPool).catch(() => setFailed(true));
       // complementar e mais lenta na 1ª leitura: a página não espera por ela
       getJson<CompositionRes>('/api/composition')
@@ -123,8 +135,8 @@ export default function Home() {
               pool={pool}
               slices={slices}
               times={{
-                rankingSince: ranking.sameSince ?? ranking.updatedAt,
-                rankingChangedAfter: ranking.changedAfter ?? null,
+                rankingSince: ranking.gold.since,
+                rankingChangedAfter: ranking.gold.after,
                 lastPurchaseAt: comp?.lastPurchaseAt ?? null,
               }}
               updatedAt={Math.min(ranking.updatedAt, pool.updatedAt)}
