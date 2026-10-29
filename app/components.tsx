@@ -28,7 +28,7 @@ import {
   type Slices,
 } from '@/lib/calc';
 import type { Composition, DailyIn } from '@/lib/composition';
-import { fmtBrl, fmtEva, fmtInt, fmtNum, fmtPct, fmtPrice, fmtTime, fmtUsdt } from '@/lib/format';
+import { fmtAgo, fmtBrl, fmtEva, fmtInt, fmtNum, fmtPct, fmtPrice, fmtTime, fmtUsdt } from '@/lib/format';
 
 // Valor em R$, ou '—' se a cotação estiver indisponível.
 const brl = (usdt: number, pool: PoolData) => (pool.usdBrl === null ? '—' : fmtBrl(usdt * pool.usdBrl));
@@ -104,14 +104,82 @@ function Countdown() {
   );
 }
 
+function useNow(intervalMs: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+// Quando cada fonte mudou de verdade, não só quando o site conferiu (as fontes não são em tempo real).
+export type SourceTimes = {
+  rankingSince: number; // ranking de gold igual desde esta leitura
+  rankingChangedAfter: number | null; // última leitura com o ranking anterior; null = mudança ainda não vista
+  evaPriceAt: number | null; // informado pela própria fonte do preço
+  lastPurchaseAt: number | null; // última compra on-chain; null = composição ainda não carregou
+};
+
+const CHANGE_GAP_MS = 6 * 60_000; // o servidor confere a cada 5 min: até aqui o horário da mudança é preciso
+
+function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt: number; stale: boolean }) {
+  const now = useNow(30_000);
+  const { rankingSince: since, rankingChangedAfter: after } = times;
+  const items: [string, string, number][] = [
+    [
+      'Ranking de gold',
+      after === null
+        ? `sem mudança desde ${fmtTime(since)}`
+        : since - after <= CHANGE_GAP_MS
+          ? `mudou às ~${fmtTime(since)}`
+          : `mudou entre ${fmtTime(after)} e ${fmtTime(since)}`,
+      since,
+    ],
+  ];
+  if (times.evaPriceAt !== null) items.push(['Preço do EVA', `atualizado às ${fmtTime(times.evaPriceAt)}`, times.evaPriceAt]);
+  if (times.lastPurchaseAt !== null)
+    items.push(['Pool (on-chain)', `última compra às ${fmtTime(times.lastPurchaseAt)}`, times.lastPurchaseAt]);
+  return (
+    <div className="space-y-2">
+      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-3 sm:gap-y-3">
+        {items.map(([label, value, at]) => (
+          <div
+            key={label}
+            className="flex items-baseline justify-between gap-3 border-b border-line py-1 text-xs sm:block sm:border-2 sm:p-3"
+          >
+            <dt className="text-muted">{label}</dt>
+            <dd className="text-right tabular-nums sm:text-left">
+              <span className="text-ink sm:text-sm sm:font-semibold">{value}</span>
+              <span className="text-muted"> · {fmtAgo(at, now)}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-muted">
+        {stale ? (
+          <span className="text-warn">⚠ Fonte indisponível — dados de {fmtTime(updatedAt)}</span>
+        ) : (
+          <>
+            As fontes não são em tempo real: acima, quando cada uma mudou. O site conferiu às {fmtTime(updatedAt)} e
+            confere a cada 5 min.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function PoolHeader({
   pool,
   slices,
+  times,
   updatedAt,
   stale,
 }: {
   pool: PoolData;
   slices: Slices;
+  times: SourceTimes;
   updatedAt: number;
   stale: boolean;
 }) {
@@ -158,13 +226,7 @@ export function PoolHeader({
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted">
-        {stale ? (
-          <span className="text-warn">⚠ Fonte indisponível — dados de {fmtTime(updatedAt)}</span>
-        ) : (
-          <>Atualizado às {fmtTime(updatedAt)} · atualiza a cada 5 min</>
-        )}
-      </p>
+      <DataTimes times={times} updatedAt={updatedAt} stale={stale} />
     </section>
   );
 }
@@ -336,7 +398,7 @@ export function PoolComposition({
           {stale ? (
             <span className="text-warn">⚠ sem atualizar desde {fmtTime(comp.updatedAt)}</span>
           ) : (
-            ` · às ${fmtTime(comp.updatedAt)}`
+            ` · última compra às ${fmtTime(comp.lastPurchaseAt ?? comp.updatedAt)}`
           )}
           {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
             <span className="text-warn">⚠ ver alertas</span>
