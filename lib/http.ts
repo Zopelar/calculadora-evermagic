@@ -6,11 +6,11 @@ export const cacheHeaders = (seconds = CACHE_SECONDS) => ({
 });
 export const CACHE_HEADERS = cacheHeaders();
 
-export async function getJson<T>(url: string): Promise<T> {
+export async function getJson<T>(url: string, timeoutMs = 10_000): Promise<T> {
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
     cache: 'no-store',
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
   return res.json();

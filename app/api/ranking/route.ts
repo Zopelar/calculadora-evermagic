@@ -2,14 +2,19 @@ import { fetchGoldRanking, fetchGuildRanking, fetchLevelRanking } from '@/lib/ev
 import { CACHE_HEADERS, cached } from '@/lib/http';
 import { connection } from 'next/server';
 
+const logNull = (err: unknown) => {
+  console.error(err);
+  return null;
+};
+
 export async function GET() {
   await connection(); // nunca pré-renderizar no build: o cache é em memória (lib/http.ts)
   try {
     const [gold, guilds, levels] = await Promise.all([
       cached('ranking/gold', fetchGoldRanking),
       // guildas e nível são complementares: se falharem, o ranking de gold ainda sai
-      cached('ranking/guild', fetchGuildRanking).catch(() => null),
-      cached('ranking/level', fetchLevelRanking).catch(() => null),
+      cached('ranking/guild', fetchGuildRanking).catch(logNull),
+      cached('ranking/level', fetchLevelRanking).catch(logNull),
     ]);
     return Response.json(
       {
