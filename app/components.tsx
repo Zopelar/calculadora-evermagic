@@ -125,31 +125,34 @@ const CHANGE_GAP_MS = 6 * 60_000; // o servidor confere a cada 5 min: até aqui 
 function DataTimes({ times, updatedAt, stale }: { times: SourceTimes; updatedAt: number; stale: boolean }) {
   const now = useNow(30_000);
   const { rankingSince: since, rankingChangedAfter: after } = times;
-  const items: [string, string, number][] = [
-    [
-      'Ranking de gold',
-      after === null
-        ? `sem mudança desde ${fmtTime(since)}`
-        : since - after <= CHANGE_GAP_MS
-          ? `mudou às ~${fmtTime(since)}`
-          : `mudou entre ${fmtTime(after)} e ${fmtTime(since)}`,
-      since,
-    ],
+  // [rótulo, valor, observação]. Sem mudança vista, o horário é só desde quando o site observa (não é
+  // uma atualização do ranking).
+  const items: [string, string, string][] = [
+    after === null
+      ? ['Ranking de gold', 'nenhuma mudança vista ainda', `site observando desde ${fmtTime(since)}`]
+      : [
+          'Ranking de gold',
+          since - after <= CHANGE_GAP_MS
+            ? `mudou às ~${fmtTime(since)}`
+            : `mudou entre ${fmtTime(after)} e ${fmtTime(since)}`,
+          fmtAgo(since, now),
+        ],
   ];
   if (times.lastPurchaseAt !== null)
-    items.push(['Pool (on-chain)', `última compra às ${fmtTime(times.lastPurchaseAt)}`, times.lastPurchaseAt]);
+    items.push([
+      'Pool (on-chain)',
+      `última compra às ${fmtTime(times.lastPurchaseAt)}`,
+      fmtAgo(times.lastPurchaseAt, now),
+    ]);
   return (
     <div className="space-y-2">
       <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-2 sm:gap-y-3">
-        {items.map(([label, value, at]) => (
-          <div
-            key={label}
-            className="flex items-baseline justify-between gap-3 border-b border-line py-1 text-xs sm:block sm:border-2 sm:p-3"
-          >
+        {items.map(([label, value, note]) => (
+          <div key={label} className="border-b border-line py-1.5 text-xs sm:border-2 sm:p-3">
             <dt className="text-muted">{label}</dt>
-            <dd className="text-right tabular-nums sm:text-left">
+            <dd className="tabular-nums">
               <span className="text-ink sm:text-sm sm:font-semibold">{value}</span>
-              <span className="text-muted"> · {fmtAgo(at, now)}</span>
+              <span className="text-muted"> · {note}</span>
             </dd>
           </div>
         ))}

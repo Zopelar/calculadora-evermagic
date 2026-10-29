@@ -70,8 +70,8 @@ quando o site conferiu):
 - **Pool (on-chain)**: horário do bloco da última compra.
 - **Ranking de gold**: a API não informa data. O cache (`cached` em `lib/http.ts`) compara cada leitura
   com a anterior e guarda `sameSince` (1ª leitura com o conteúdo atual) e `changedAfter` (última leitura
-  com o conteúdo antigo). Como fica em memória, depois que a instância reinicia o site só sabe dizer
-  "sem mudança desde HH:MM" até ver a próxima mudança.
+  com o conteúdo antigo). Como fica em memória, depois que a instância reinicia o site mostra "nenhuma
+  mudança vista ainda · site observando desde HH:MM" até ver a próxima mudança.
 
 ## Cálculo
 
