@@ -22,6 +22,7 @@ import {
   PlayerSearch,
   PoolComposition,
   PoolHeader,
+  SeasonEndBanner,
   RankingTable,
   Simulator,
   StickyNotice,
@@ -125,6 +126,8 @@ export default function Home() {
           </h1>
           <p className="text-sm text-muted">Season 0 Alpha · quanto cada jogador ganharia se a season acabasse agora</p>
         </header>
+
+        <SeasonEndBanner />
 
         {!ranking || !pool || !slices ? (
           <p className="panel p-6 text-center text-sm text-muted">
