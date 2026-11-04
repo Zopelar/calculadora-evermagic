@@ -85,13 +85,33 @@ export function Money({
   );
 }
 
-function Countdown() {
+function useNow() {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  return now;
+}
+
+// Aparece sozinho quando o relógio passa de SEASON_END.
+export function SeasonEndBanner() {
+  const now = useNow();
+  if (now === null || now < Date.parse(SEASON_END)) return null;
+  return (
+    <div className="panel border-gold p-4 text-center">
+      <p className="font-pixel text-sm text-gold">A SEASON 0 ALPHA ACABOU!</p>
+      <p className="mt-2 text-sm text-muted">
+        Valeu a todos que jogaram e acompanharam por aqui. Os valores abaixo são a última estimativa — a premiação
+        oficial é definida pela equipe do Evermagic.
+      </p>
+    </div>
+  );
+}
+
+function Countdown() {
+  const now = useNow();
   if (now === null) return <div className="text-xl font-bold">—</div>;
   const s = Math.floor((Date.parse(SEASON_END) - now) / 1000);
   if (s <= 0) return <div className="text-xl font-bold">Season encerrada</div>;
