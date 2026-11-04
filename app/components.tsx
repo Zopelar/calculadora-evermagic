@@ -85,7 +85,7 @@ export function Money({
   );
 }
 
-function useNow() {
+function useClock() {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
@@ -97,7 +97,7 @@ function useNow() {
 
 // Aparece sozinho quando o relógio passa de SEASON_END.
 export function SeasonEndBanner() {
-  const now = useNow();
+  const now = useClock();
   if (now === null || now < Date.parse(SEASON_END)) return null;
   return (
     <div className="panel border-gold p-4 text-center">
@@ -111,7 +111,7 @@ export function SeasonEndBanner() {
 }
 
 function Countdown() {
-  const now = useNow();
+  const now = useClock();
   if (now === null) return <div className="text-xl font-bold">—</div>;
   const s = Math.floor((Date.parse(SEASON_END) - now) / 1000);
   if (s <= 0) return <div className="text-xl font-bold">Season encerrada</div>;
