@@ -5,6 +5,7 @@ import {
   EVA_TOKEN,
   GAME_PASS_EVA,
   LOGS_WINDOW_BLOCKS,
+  POOL_FINAL,
   POTION_EVA,
   PRIZE_WALLET,
   SEED_EVA,
@@ -26,6 +27,12 @@ describe('config', () => {
 
   it('carteira de doação vazia (seção escondida) ou endereço válido', () => {
     expect(DONATION_WALLET === '' || isAddress(DONATION_WALLET), DONATION_WALLET).toBe(true);
+  });
+
+  it('saldo do fechamento: desligado (null) ou valores válidos', () => {
+    if (POOL_FINAL === null) return;
+    expect(POOL_FINAL.eva).toBeGreaterThan(0);
+    expect(POOL_FINAL.usdt).toBeGreaterThanOrEqual(0);
   });
 
   it('a divisão da prize pool soma 100%', () => {

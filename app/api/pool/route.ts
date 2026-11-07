@@ -1,4 +1,4 @@
-import { USDT_BRL_URL } from '@/config';
+import { POOL_FINAL, USDT_BRL_URL } from '@/config';
 import { readPoolBalances } from '@/lib/chain';
 import { fetchEvaPrice } from '@/lib/evermagic';
 import { CACHE_HEADERS, cached, getJson } from '@/lib/http';
@@ -16,7 +16,8 @@ export async function GET() {
   await connection(); // nunca pré-renderizar no build: o cache é em memória (lib/http.ts)
   try {
     const [balances, evaPrice, usdBrl] = await Promise.all([
-      cached('pool/balances', readPoolBalances),
+      // depois do pagamento da premiação, a pool fica travada no saldo do fechamento (config.ts)
+      POOL_FINAL ? { data: POOL_FINAL, at: Date.now(), stale: false } : cached('pool/balances', readPoolBalances),
       cached('pool/evaPrice', fetchEvaPrice),
       // a cotação em R$ é complementar: se falhar, a pool sai sem os valores em reais
       cached('pool/usdBrl', fetchUsdtBrl).catch((err) => {

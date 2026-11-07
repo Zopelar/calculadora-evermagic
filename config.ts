@@ -26,6 +26,10 @@ export const USDT_BRL_URL = 'https://api.coinbase.com/v2/exchange-rates?currency
 // Arbitrum One (chainId 42161).
 export const RPC_URL = process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
 export const PRIZE_WALLET = '0x139061180aDea785DD8A1a32e4A2B1188d2621A1';
+// Saldo da carteira no fim da season (bloco 521.206.599, 04/11/2026 15:00 UTC). Em 06/11 saíram
+// 367,35 EVA para pagar a premiação; desde então a pool usa este saldo, não o ao vivo (o preço do EVA
+// continua ao vivo). null = ler o saldo ao vivo (ex.: numa próxima season).
+export const POOL_FINAL: { eva: number; usdt: number } | null = { eva: 408.511, usdt: 0 };
 export const EVA_TOKEN = '0x45d9831d8751b2325f3dbf48db748723726e1c8c';
 export const USDT_TOKEN = '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9';
 
