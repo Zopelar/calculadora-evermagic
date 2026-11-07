@@ -6,6 +6,7 @@ import {
   DONATION_WALLET,
   GAME_PASS_EVA,
   OUTSIDE_LIKELY_FACTOR,
+  POOL_FINAL,
   POTION_EVA,
   PRIZE_WALLET,
   SEASON_END,
@@ -221,7 +222,9 @@ export function PoolHeader({
         <Stat label="Prize pool total" className="sm:col-span-2">
           <Money usdt={slices.totalUsdt} pool={pool} big />
           <p className="mt-1 text-xs text-muted">
-            {fmtEva(pool.eva)} na carteira{pool.usdt > 0 && ` + ${fmtUsdt(pool.usdt)}`}
+            {fmtEva(pool.eva)}
+            {pool.usdt > 0 && ` + ${fmtUsdt(pool.usdt)}`}
+            {POOL_FINAL ? ' no fechamento da season (antes do pagamento)' : ' na carteira'}
           </p>
         </Stat>
         <Stat label="Preço do EVA">
@@ -420,7 +423,7 @@ export function PoolComposition({
           ) : (
             ` · última compra às ${fmtTime(comp.lastPurchaseAt ?? comp.updatedAt)}`
           )}
-          {(!comp.balanced || comp.unknown.count > 0 || comp.outgoing.count > 0) && (
+          {(!comp.balanced || comp.unknown.count > 0 || (comp.outgoing.count > 0 && !POOL_FINAL)) && (
             <span className="text-warn">⚠ ver alertas</span>
           )}
           <span aria-hidden className="text-sm text-gold transition-transform group-open:rotate-180">
@@ -458,11 +461,17 @@ export function PoolComposition({
             com nenhuma combinação de passes e poções.
           </p>
         )}
-        {comp.outgoing.count > 0 && (
-          <p className="text-warn">
-            ⚠ {comp.outgoing.count} saída(s) da carteira ({fmtEva(comp.outgoing.eva)}): a pool foi movimentada.
-          </p>
-        )}
+        {comp.outgoing.count > 0 &&
+          (POOL_FINAL ? (
+            <p className="text-muted">
+              {comp.outgoing.count} saída(s) da carteira ({fmtEva(comp.outgoing.eva)}) depois do fim da season: o
+              pagamento da premiação. Os ganhos usam o saldo do fechamento ({fmtEva(POOL_FINAL.eva)}).
+            </p>
+          ) : (
+            <p className="text-warn">
+              ⚠ {comp.outgoing.count} saída(s) da carteira ({fmtEva(comp.outgoing.eva)}): a pool foi movimentada.
+            </p>
+          ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
